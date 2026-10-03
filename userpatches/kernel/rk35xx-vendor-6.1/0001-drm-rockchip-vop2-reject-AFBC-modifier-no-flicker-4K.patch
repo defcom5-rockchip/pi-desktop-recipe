@@ -1,0 +1,43 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: defcom5-rockchip <defcom5-rockchip@users.noreply.github.com>
+Date: Fri, 26 Jun 2026 12:23:37 -0700
+Subject: [PATCH 1/5] drm/rockchip: vop2: reject AFBC modifier (no-flicker
+ 4K@120 variant)
+
+VOP2 can't decompress AFBC scanout fast enough at 4K@120Hz -> windowed
+flicker. First attempt (disable-afbc-win DT prop) REMOVED the AFBC Cluster
+planes, killing the primary plane -> no display (black after boot logo).
+
+Instead, reject AFBC modifiers in rockchip_vop2_mod_supported() so the
+Cluster plane still registers but only advertises LINEAR -> compositor
+composites linear -> linear scanout -> no flicker, display intact.
+Confirmed on hardware 2026-06-25.
+
+(cherry picked from commit 472a90918a76d5d3cf8717ef46e53e0f9cf0576a)
+---
+ drivers/gpu/drm/rockchip/rockchip_drm_vop2.c | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/drivers/gpu/drm/rockchip/rockchip_drm_vop2.c b/drivers/gpu/drm/rockchip/rockchip_drm_vop2.c
+index a19633c697cc..36e3f6b853ae 100644
+--- a/drivers/gpu/drm/rockchip/rockchip_drm_vop2.c
++++ b/drivers/gpu/drm/rockchip/rockchip_drm_vop2.c
+@@ -3130,6 +3130,18 @@ static bool rockchip_vop2_mod_supported(struct drm_plane *plane, u32 format, u64
+ 	if (modifier == DRM_FORMAT_MOD_LINEAR)
+ 		return true;
+ 
++	/*
++	 * Pi Studio NO-FLICKER variant: reject AFBC modifiers so the compositor
++	 * composites to a LINEAR buffer on the (still-registered) Cluster primary.
++	 * The RK3588 VOP2 cannot decompress AFBC scanout fast enough at 4K@120Hz,
++	 * causing windowed/composited flicker (fullscreen linear direct-scanout is
++	 * fine). Unlike disable-afbc-win, which removes the AFBC Cluster planes and
++	 * thus kills the primary plane (no display), this keeps the plane and only
++	 * drops AFBC -> linear scanout -> no flicker. Confirmed on HW 2026-06-25.
++	 */
++	if (rockchip_afbc(plane, modifier))
++		return false;
++
+ 	if (!rockchip_afbc(plane, modifier) &&
+ 	    !rockchip_rfbc(plane, modifier) &&
+ 	    !rockchip_tiled(plane, modifier)) {

@@ -1,0 +1,102 @@
+#!/bin/bash
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 defcom5-rockchip (Pi-Desktop). See LICENSE in the recipe repository.
+# pidesktop-install-app — install an app that Pi-Desktop doesn't ship, from its own repository. Run as root (pkexec).
+# Only the apps listed below can be installed; nothing else is accepted on the command line. Ubuntu's archive and the
+# Mozilla Team PPA are already configured in the image; VSCodium's repository is added here with its signing key pinned by
+# fingerprint (fail closed), the same way pidesktop-install-chrome pins Google's. On success the placeholder launcher in
+# /usr/local/share/applications is removed, so the app's own menu entry (icon, actions, file types) takes over.
+# Firefox gets Pi-Desktop's board-specific pieces applied after the install (a launcher that gives it the Mali GL library,
+# VA-API prefs, a neutral policy file): Mozilla's policy allows only unaltered copies to be distributed, so the
+# alteration happens here, on the user's machine, at the user's request.
+#
+# Usage: pidesktop-install-app <libreoffice|gimp|inkscape|thunderbird|vscodium|firefox>
+#        pidesktop-install-app --check-key        (no root: fetch VSCodium's key and compare it with the pinned fingerprint)
+set -euo pipefail
+LOG=/var/log/pidesktop-install-app.log
+SHADOW=/usr/local/share/applications
+STAGE=/usr/share/pi-desktop/firefox
+VSCODIUM_FPR=1302DE60231889FE1EBACADC54678CF75A278D9C   # Pavlo Rudyi <paulcarroty@riseup.net>, the VSCodium repo key since 2018;
+                                                        # checked against the signature on download.vscodium.com's InRelease, 2026-10-02
+VSCODIUM_KEY_URL=https://gitlab.com/paulcarroty/vscodium-deb-rpm-repo/-/raw/master/pub.gpg
+VSCODIUM_KEYRING=/usr/share/keyrings/vscodium-archive-keyring.gpg
+VSCODIUM_SOURCES=/etc/apt/sources.list.d/vscodium.sources
+
+fetch_vscodium_key() {   # $1 = output keyring; exits 2 if the downloaded key's PRIMARY fingerprint is not the pinned one
+	local tmp; tmp=$(mktemp -d); trap 'rm -rf "$tmp"' RETURN
+	export GNUPGHOME="$tmp"
+	echo "Fetching VSCodium's signing key"
+	curl -fsSL --proto '=https' --tlsv1.2 --max-time 60 "$VSCODIUM_KEY_URL" -o "$tmp/key.asc"
+	gpg --batch --quiet --import "$tmp/key.asc"
+	# only a key whose PRIMARY fingerprint is the pinned one is exported; anything else in the download is ignored
+	gpg --batch --with-colons --list-keys "$VSCODIUM_FPR" 2>/dev/null \
+		| awk -F: -v f="$VSCODIUM_FPR" '$1=="pub"{p=1;next} p&&$1=="fpr"{ok=($10==f);p=0} END{exit ok?0:1}' \
+		|| { echo "E: VSCodium's key does not match the pinned fingerprint $VSCODIUM_FPR — not installing"; return 2; }
+	gpg --batch --export "$VSCODIUM_FPR" > "$1"
+	echo "Key matches the pinned fingerprint"
+}
+
+firefox_apply_pidesktop_pieces() {
+	echo "Applying Pi-Desktop's Firefox pieces (Mali GL launcher, VA-API prefs, neutral policy)"
+	install -d /usr/local/lib/pidesktop-firefox-mali
+	ln -sfn /usr/lib/aarch64-linux-gnu/mali/libGLESv2.so.2 /usr/local/lib/pidesktop-firefox-mali/libGL.so
+	ln -sfn /usr/lib/aarch64-linux-gnu/mali/libGLESv2.so.2 /usr/local/lib/pidesktop-firefox-mali/libGL.so.1
+	install -m0755 "$STAGE/firefox" /usr/local/bin/firefox                      # ahead of /usr/bin in PATH: menu entries use it
+	install -Dm0644 "$STAGE/vaapi.js" /usr/lib/firefox/defaults/pref/vaapi.js   # survives package upgrades (dpkg leaves unknown files)
+	if [[ -f /etc/firefox/policies/policies.json && ! -L /etc/firefox/policies/policies.json ]] \
+	   && ! cmp -s /etc/firefox/policies/policies.json "$STAGE/policies.json"; then
+		dpkg-divert --quiet --add --rename --divert /etc/firefox/policies/policies.json.distrib /etc/firefox/policies/policies.json || true
+	fi
+	install -Dm0644 "$STAGE/policies.json" /etc/firefox/policies/policies.json
+}
+
+APP=${1:-}
+case $APP in
+	libreoffice) PKGS="libreoffice-writer libreoffice-calc libreoffice-impress libreoffice-draw libreoffice-math libreoffice-gtk3 libreoffice-gnome"
+	             BIN=/usr/bin/libreoffice;  DESKTOP=libreoffice-startcenter.desktop ;;   # no -base: it drags in a 234 MB Java runtime
+	gimp)        PKGS=gimp;        BIN=/usr/bin/gimp;        DESKTOP=gimp.desktop ;;
+	inkscape)    PKGS=inkscape;    BIN=/usr/bin/inkscape;    DESKTOP=org.inkscape.Inkscape.desktop ;;
+	thunderbird) PKGS=thunderbird; BIN=/usr/bin/thunderbird; DESKTOP=thunderbird.desktop ;;
+	vscodium)    PKGS=codium;      BIN=/usr/bin/codium;      DESKTOP=codium.desktop ;;
+	firefox)     PKGS=firefox;     BIN=/usr/bin/firefox;     DESKTOP=firefox.desktop ;;
+	--check-key) fetch_vscodium_key "$(mktemp)"; exit $? ;;
+	*)           echo "usage: pidesktop-install-app <libreoffice|gimp|inkscape|thunderbird|vscodium|firefox>" >&2; exit 2 ;;
+esac
+
+[[ $EUID -eq 0 ]] || { echo "must run as root" >&2; exit 1; }
+exec 9>/run/lock/pidesktop-install-app.lock
+flock -n 9 || { echo "another install is already running" >&2; exit 3; }
+exec > >(tee -a "$LOG") 2>&1
+echo "== $(date '+%F %T') installing $APP ($PKGS)"
+export DEBIAN_FRONTEND=noninteractive
+
+if [[ $APP == vscodium && ! -f $VSCODIUM_SOURCES ]]; then
+	fetch_vscodium_key "$VSCODIUM_KEYRING.tmp"
+	install -m0644 "$VSCODIUM_KEYRING.tmp" "$VSCODIUM_KEYRING"; rm -f "$VSCODIUM_KEYRING.tmp"
+	cat > "$VSCODIUM_SOURCES" <<EOF
+# VSCodium — added by Pi-Desktop's first-click installer (pidesktop-install-app)
+Types: deb
+URIs: https://download.vscodium.com/debs
+Suites: vscodium
+Components: main
+Architectures: arm64
+Signed-By: $VSCODIUM_KEYRING
+EOF
+	chmod 644 "$VSCODIUM_SOURCES"
+fi
+
+if [[ ! -x $BIN ]]; then
+	echo "Updating package lists"
+	apt-get update -q
+	echo "Downloading and installing $APP"
+	apt-get install -y -q $PKGS
+fi
+[[ -x $BIN ]] || { echo "E: $APP is not installed after apt finished"; exit 1; }
+[[ $APP == firefox ]] && firefox_apply_pidesktop_pieces
+
+# the placeholder made way for the real menu entry
+if [[ -f $SHADOW/$DESKTOP ]]; then
+	rm -f "$SHADOW/$DESKTOP"
+	update-desktop-database "$SHADOW" 2>/dev/null || true
+fi
+echo "== done: $(dpkg-query -W -f='${Package} ${Version}' "${PKGS%% *}")"

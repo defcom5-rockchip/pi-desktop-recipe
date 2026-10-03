@@ -1,0 +1,59 @@
+From eb2e3eb2dd732b9224b4cd5cd7faabd3cb220af5 Mon Sep 17 00:00:00 2001
+From: defcom5-rockchip <286489597+defcom5-rockchip@users.noreply.github.com>
+Date: Thu, 24 Sep 2026 09:09:26 -0700
+Subject: [PATCH 7/8] drm/rockchip: dw_hdmi_qp: optional cap on the FRL
+ per-lane rate
+
+Add a frl_max_rate_per_lane module parameter (default 0 = no cap, so
+behaviour is unchanged). When set, the per-lane FRL rate chosen by
+hdmi_select_link_config() / the "40G is preferred" rule is lowered to the
+given value before the PHY is configured, e.g. 8 (32 Gbps over 4 lanes),
+the lowest rate that carries 3840x2160@120 8-bit.
+
+The parameter is writable at runtime (0644) and takes effect at the next
+modeset, which makes it possible to test whether a marginal HDMI 2.1
+link (cable, sink) stays stable at a lower FRL rate without rebuilding.
+
+Written with the help of an LLM assistant (Claude); the experiment it
+enables is the submitter's.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ drivers/gpu/drm/rockchip/dw_hdmi_qp-rockchip.c | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/drivers/gpu/drm/rockchip/dw_hdmi_qp-rockchip.c b/drivers/gpu/drm/rockchip/dw_hdmi_qp-rockchip.c
+index a2c65e70c84f..94c06bcc12fc 100644
+--- a/drivers/gpu/drm/rockchip/dw_hdmi_qp-rockchip.c
++++ b/drivers/gpu/drm/rockchip/dw_hdmi_qp-rockchip.c
+@@ -39,6 +39,10 @@
+ #include "rockchip_drm_vop.h"
+ #include "../../../phy/rockchip/phy-hdmi.h"
+ 
++static unsigned int frl_max_rate_per_lane;
++module_param(frl_max_rate_per_lane, uint, 0644);
++MODULE_PARM_DESC(frl_max_rate_per_lane, "Cap the HDMI FRL rate per lane in Gbps (3/6/8/10/12, 0 = no cap)");
++
+ #define HIWORD_UPDATE(val, mask)	(val | (mask) << 16)
+ 
+ #define RK3538_VO_GRF_HDMI_MISC		0x68
+@@ -2684,6 +2688,16 @@ static int dw_hdmi_rockchip_encoder_atomic_check(struct drm_encoder *encoder,
+ 			hdmi->link_cfg.frl_lanes = 4;
+ 			hdmi->link_cfg.rate_per_lane = 10;
+ 		}
++		/*
++		 * Optional user cap on the per-lane FRL rate (Gbps; 3, 6, 8, 10 or 12).
++		 * 0 = no cap (default, unchanged behaviour). Lets a marginal link be run
++		 * at the lowest rate the mode needs, e.g. 8 (32G) for 3840x2160@120 8-bit.
++		 */
++		if (frl_max_rate_per_lane && hdmi->link_cfg.rate_per_lane > frl_max_rate_per_lane) {
++			dev_info(hdmi->dev, "FRL rate capped to %uG/lane by frl_max_rate_per_lane\n",
++				 frl_max_rate_per_lane);
++			hdmi->link_cfg.rate_per_lane = frl_max_rate_per_lane;
++		}
+ 
+ 		phy_cfg.bpc = color_depth;
+ 		phy_cfg.frl.lanes = hdmi->link_cfg.frl_lanes;
+-- 
+2.53.0
+

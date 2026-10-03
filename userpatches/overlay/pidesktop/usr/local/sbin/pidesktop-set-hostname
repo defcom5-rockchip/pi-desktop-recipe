@@ -1,0 +1,62 @@
+#!/bin/bash
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 defcom5-rockchip (Pi-Desktop). See LICENSE in the recipe repository.
+# pidesktop-set-hostname — ask for the computer name during Armbian's first login (called by armbian-firstlogin
+# right after the user account is created; the recipe inserts the call). Every image ships as "pidesktop", so two
+# Pi-Desktops on one network would clash (mDNS pidesktop.local, Samba/NetBIOS name) without this.
+#   pidesktop-set-hostname [username]      suggestion = <username>-pidesktop, editable
+#   PRESET_HOSTNAME=name                   non-interactive (Armbian preset / automated first run)
+#   PIDESKTOP_HOSTNAME_DRYRUN=1            print what would change, change nothing (testing)
+
+# RFC 1123 label: a-z 0-9 and '-', 1..63, no '-' at either end
+sanitize() {
+	local n="${1,,}"
+	n="${n//[^a-z0-9-]/-}"
+	while [[ $n == *--* ]]; do n="${n//--/-}"; done
+	n="${n#-}"; n="${n%-}"
+	n="${n:0:63}"; n="${n%-}"
+	printf '%s' "$n"
+}
+
+apply() {
+	local name="$1"
+	if [[ -n ${PIDESKTOP_HOSTNAME_DRYRUN:-} ]]; then
+		echo "would set hostname: $name (and 127.0.1.1 in /etc/hosts)"
+		return 0
+	fi
+	hostnamectl hostname "$name" 2>/dev/null || { echo "$name" > /etc/hostname && hostname "$name"; } || return 1
+	if grep -q '^127\.0\.1\.1[[:space:]]' /etc/hosts; then
+		sed -i "s/^127\.0\.1\.1[[:space:]].*/127.0.1.1\t$name/" /etc/hosts
+	else
+		printf '127.0.1.1\t%s\n' "$name" >> /etc/hosts
+	fi
+	# announce the new name on the network now rather than at the next boot
+	systemctl try-restart avahi-daemon.service smbd.service nmbd.service > /dev/null 2>&1 || true
+	echo -e "Computer name set to \e[0;92m$name\x1B[0m."
+}
+
+user="$(sanitize "${1:-}")"
+suggest="$(sanitize "${user:+$user-}pidesktop")"
+
+if [[ -n ${PRESET_HOSTNAME:-} ]]; then
+	name="$(sanitize "$PRESET_HOSTNAME")"
+	[[ -n $name ]] && apply "$name"
+	exit 0
+fi
+# no terminal (automated first run): keep the image default rather than hang on a prompt
+[[ -t 0 ]] || exit 0
+
+echo -e "\nThe computer name is how this Pi-Desktop appears on your network (file sharing, $suggest.local)."
+while :; do
+	read -r -e -p "Please provide a computer name: " -i "$suggest" answer
+	name="$(sanitize "$answer")"
+	if [[ -z $name ]]; then
+		echo -e "\e[0;31mError:\x1B[0m use letters, digits and hyphens."
+		continue
+	fi
+	[[ $name != "${answer,,}" ]] && echo -e "Using \e[0;92m$name\x1B[0m (letters, digits and hyphens only)."
+	apply "$name" && break
+	echo -e "\e[0;31mError:\x1B[0m could not set the computer name, keeping $(hostname)."
+	break
+done
+exit 0

@@ -1,0 +1,6 @@
+#!/bin/sh
+# Pi-Desktop: Firefox on the Mali blob. Firefox loads libGL.so(.1) first and dlsym()s GL from it; glvnd's copy dispatches
+# into nothing when EGL is not glvnd's, so give Firefox a private libGL that IS the Mali GLES library. Wayland only.
+export LD_LIBRARY_PATH="/usr/local/lib/pidesktop-firefox-mali${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export MOZ_ENABLE_WAYLAND=1
+exec /usr/lib/firefox/firefox "$@"

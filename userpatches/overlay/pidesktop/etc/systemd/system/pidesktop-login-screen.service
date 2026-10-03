@@ -1,0 +1,15 @@
+[Unit]
+Description=Pi-Desktop: login screen at every boot (undo the Armbian first-run autologin)
+# armbian-firstlogin enables GDM autologin for the first session and disables it 20 s later from a
+# background job that dies with the wizard's console session -> autologin would stay on forever.
+# Runs once setup is finished (marker gone), before the display manager starts.
+ConditionPathExists=!/root/.not_logged_in_yet
+ConditionPathExists=/etc/gdm3/custom.conf
+Before=display-manager.service gdm.service gdm3.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sed -i -E 's/^[#[:space:]]*AutomaticLoginEnable[[:space:]]*=.*/AutomaticLoginEnable = false/' /etc/gdm3/custom.conf
+
+[Install]
+WantedBy=graphical.target

@@ -1,0 +1,102 @@
+From c0600eeee5f9330470321f08bfbb50c794a672a4 Mon Sep 17 00:00:00 2001
+From: defcom5-rockchip <286489597+defcom5-rockchip@users.noreply.github.com>
+Date: Thu, 24 Sep 2026 19:39:25 -0700
+Subject: [PATCH] drm/rockchip: dw_hdmi_qp: hide HDMI 2.1 FRL modes unless
+ allow_frl=1
+
+On RK3588 (Orange Pi 5B) an HDMI 2.1 FRL link, e.g. 3840x2160@120,
+hard-hangs the SoC whenever the link is torn down and rebuilt: screen
+blank, sink HPD toggle, monitor power-off. TMDS modes up to 4K@60 are
+unaffected. Until the FRL teardown/retrain path is fixed such modes must
+not be offered to userspace by default, so GNOME's Displays panel lists
+up to 4K@60 only.
+
+Add an allow_frl module parameter (bool, default false, 0644). While it
+is false dw_hdmi_rockchip_mode_valid() returns MODE_BAD for every mode
+with mode->clock >= HDMI20_MAX_RATE (600000 kHz), independent of
+enable_gpio and of dw_hdmi_qp_version, and prints one dev_info_once so
+the missing 120 Hz entry is explained in dmesg.
+
+The threshold is the pixel clock, not the TMDS character rate, and it is
+">= HDMI20_MAX_RATE" rather than the "> 600000" of the existing
+enable_gpio check:
+
+ - hdmi_select_link_config() only stays on TMDS while
+   (tmdsclk < HDMI20_MAX_RATE && mode.clock < HDMI20_MAX_RATE); it goes
+   FRL for any mode.clock >= 600000 even when YUV420 halves the TMDS
+   rate to 594 MHz. The board's monitor advertises 4K@120 in its
+   YCbCr 4:2:0 capability map, so a check on the halved rate would let
+   exactly the hanging mode through. Gating on mode->clock mirrors the
+   driver's own FRL decision.
+ - ">=" matches that decision exactly: a mode at precisely 600000 kHz
+   would be driven over FRL by hdmi_select_link_config(), so it has to
+   be hidden too. For the CEA timings that matter (594000 for 4K@60,
+   1188000 for 4K@120) both comparisons behave the same.
+
+The check sits after the existing enable_gpio / DW_HDMI_QP_V2 check so
+the log line is only emitted when the knob is the reason a mode is
+missing.
+
+rockchipdrm is built in on this image, so the parameter is a boot
+argument:
+
+    rockchipdrm.allow_frl=1
+
+(as a module: "options rockchipdrm allow_frl=1"). It can also be flipped
+at runtime through /sys/module/rockchipdrm/parameters/allow_frl; the
+mode list changes at the next connector probe (replug, or
+"echo detect > /sys/class/drm/card*-HDMI-A-1/status").
+
+Not covered: mode_valid() does not know the colour depth, so a
+sub-600 MHz mode requested at 10-bit RGB/YUV444 on an HDMI 2.1 sink
+(TMDS rate x1.25, see the link_cfg.rate_per_lane branch in the output
+format selection) can still end up on FRL. The default output is 8-bit
+(or whatever U-Boot lit the display with), so reaching that path needs
+an explicit color_depth property change.
+
+Written with the help of an LLM assistant (Claude); the hang report and
+the decision to gate FRL by default are the submitter's.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ drivers/gpu/drm/rockchip/dw_hdmi_qp-rockchip.c | 17 +++++++++++++++++
+ 1 file changed, 17 insertions(+)
+
+diff --git a/drivers/gpu/drm/rockchip/dw_hdmi_qp-rockchip.c b/drivers/gpu/drm/rockchip/dw_hdmi_qp-rockchip.c
+index 94c06bcc12fc..4f8f012d2f7f 100644
+--- a/drivers/gpu/drm/rockchip/dw_hdmi_qp-rockchip.c
++++ b/drivers/gpu/drm/rockchip/dw_hdmi_qp-rockchip.c
+@@ -43,6 +43,10 @@ static unsigned int frl_max_rate_per_lane;
+ module_param(frl_max_rate_per_lane, uint, 0644);
+ MODULE_PARM_DESC(frl_max_rate_per_lane, "Cap the HDMI FRL rate per lane in Gbps (3/6/8/10/12, 0 = no cap)");
+ 
++static bool allow_frl;
++module_param(allow_frl, bool, 0644);
++MODULE_PARM_DESC(allow_frl, "Offer HDMI 2.1 FRL modes (pixel clock >= 600 MHz) to userspace (default: false)");
++
+ #define HIWORD_UPDATE(val, mask)	(val | (mask) << 16)
+ 
+ #define RK3538_VO_GRF_HDMI_MISC		0x68
+@@ -1728,6 +1732,19 @@ dw_hdmi_rockchip_mode_valid(struct dw_hdmi *dw_hdmi, void *data,
+ 	    mode->clock > 600000)
+ 		return MODE_BAD;
+ 
++	/*
++	 * Tearing down and rebuilding an FRL link (blank, sink HPD toggle,
++	 * monitor power-off) hard-hangs the RK3588 SoC. Until that is fixed,
++	 * hide every mode hdmi_select_link_config() would drive over FRL,
++	 * i.e. pixel clock >= HDMI20_MAX_RATE even for YUV420 (whose TMDS
++	 * character rate is halved), unless the user opts in with allow_frl.
++	 */
++	if (!allow_frl && mode->clock >= HDMI20_MAX_RATE) {
++		dev_info_once(hdmi->dev, "hiding HDMI 2.1 FRL modes (%dx%d@%d, %d kHz); set rockchipdrm.allow_frl=1 to offer them\n",
++			      mode->hdisplay, mode->vdisplay, drm_mode_vrefresh(mode), mode->clock);
++		return MODE_BAD;
++	}
++
+ 	return MODE_OK;
+ }
+ 
+-- 
+2.53.0
+

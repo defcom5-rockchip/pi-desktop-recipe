@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Thunderbird Mail
+Comment=Mail, calendar and contacts. Downloads on first use.
+Exec=/usr/local/bin/pidesktop-get thunderbird %u
+Icon=pidesktop-get-mail
+Terminal=false
+Categories=Network;Email;Calendar;
+Keywords=thunderbird;mail;email;calendar;
+StartupNotify=true

@@ -1,0 +1,12 @@
+// Pi-Desktop: let members of "audio" use rtkit (real-time / high priority for PipeWire, JACK)
+// regardless of login timing. GDM starts the user's PipeWire ~9 s before the user's seat session
+// exists, so the stock policy (allow_active/allow_inactive yes, allow_any no) refuses PipeWire's
+// one-shot rtkit request and audio runs at normal priority for the whole session (test3, 2026-09-24).
+// rtkit still enforces its own caps: RR priority <= 20, RLIMIT_RTTIME 200 ms, starvation canary.
+polkit.addRule(function(action, subject) {
+    if ((action.id == "org.freedesktop.RealtimeKit1.acquire-real-time" ||
+         action.id == "org.freedesktop.RealtimeKit1.acquire-high-priority") &&
+        subject.isInGroup("audio")) {
+        return polkit.Result.YES;
+    }
+});

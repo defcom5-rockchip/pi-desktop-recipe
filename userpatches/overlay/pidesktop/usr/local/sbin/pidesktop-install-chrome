@@ -1,0 +1,54 @@
+#!/bin/bash
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 defcom5-rockchip (Pi-Desktop). See LICENSE in the recipe repository.
+# pidesktop-install-chrome — install Google Chrome from Google's signed apt repository. Run as root (pkexec).
+# Pi-Desktop does not ship Chrome: Google's terms make its licence personal and forbid redistribution, so it is
+# fetched from Google on the user's own machine. The key and .sources file are written exactly as Chrome's own
+# package writes them (see its postinst), so the package's postinst just refreshes them and updates keep working.
+set -euo pipefail
+FPR=EB4C1BFD4F042F6DDDCCEC917721F63BD38B4796   # Google Inc. (Linux Packages Signing Authority), primary key since 2016
+KEYRING=/usr/share/keyrings/google-chrome.gpg
+SOURCES=/etc/apt/sources.list.d/google-chrome.sources
+LAUNCHER=/usr/local/share/applications/google-chrome.desktop
+LOG=/var/log/pidesktop-install-chrome.log
+
+[[ $EUID -eq 0 ]] || { echo "must run as root" >&2; exit 1; }
+exec 9>/run/lock/pidesktop-install-chrome.lock
+flock -n 9 || { echo "another Chrome install is already running" >&2; exit 3; }
+exec > >(tee -a "$LOG") 2>&1
+echo "== $(date '+%F %T') installing Google Chrome"
+
+if [[ ! -x /usr/bin/google-chrome-stable ]]; then
+	tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+	export GNUPGHOME="$tmp"
+	echo "Fetching Google's signing key"
+	curl -fsSL --proto '=https' --tlsv1.2 --max-time 60 https://dl.google.com/linux/linux_signing_key.pub -o "$tmp/key.asc"
+	gpg --batch --quiet --import "$tmp/key.asc"
+	# only a key whose PRIMARY fingerprint is the pinned one is exported; anything else in the download is ignored
+	gpg --batch --with-colons --list-keys "$FPR" | awk -F: -v f="$FPR" '$1=="pub"{p=1;next} p&&$1=="fpr"{ok=($10==f);p=0} END{exit ok?0:1}' \
+		|| { echo "E: Google's key does not match the pinned fingerprint $FPR — not installing"; exit 2; }
+	gpg --batch --export "$FPR" > "$tmp/google-chrome.gpg"
+	install -m0644 "$tmp/google-chrome.gpg" "$KEYRING"
+	cat > "$SOURCES" <<EOF
+### THIS FILE IS AUTOMATICALLY CONFIGURED ###
+# Changes to this file will not be preserved.
+# This file will not be recreated if removed.
+X-Repolib-Name: Google Chrome
+Types: deb
+URIs: https://dl.google.com/linux/chrome-stable/deb/
+Suites: stable
+Components: main
+Architectures: arm64
+Signed-By: $KEYRING
+EOF
+	chmod 644 "$SOURCES"
+	echo "Updating package lists"
+	apt-get update -q
+	echo "Downloading and installing Google Chrome"
+	DEBIAN_FRONTEND=noninteractive apt-get install -y -q google-chrome-stable
+fi
+
+[[ -x /usr/bin/google-chrome-stable ]] || { echo "E: google-chrome-stable is not installed"; exit 1; }
+# the launcher shipped with a generic browser icon (the image carries no Google artwork); now Chrome's own icon exists
+[[ -f $LAUNCHER ]] && sed -i 's/^Icon=web-browser$/Icon=google-chrome/' "$LAUNCHER"
+echo "== done: google-chrome-stable $(dpkg-query -W -f='${Version}' google-chrome-stable)"

@@ -1,0 +1,22 @@
+[Desktop Entry]
+Version=1.0
+Name=Google Chrome
+GenericName=Web Browser
+Comment=Google Chrome with hardware video decode; downloaded from Google the first time you open it
+Exec=/usr/local/bin/pidesktop-chrome %U
+StartupNotify=true
+Terminal=false
+Icon=web-browser
+Type=Application
+Categories=Network;WebBrowser;
+MimeType=text/html;text/xml;application/xhtml+xml;x-scheme-handler/http;x-scheme-handler/https;
+StartupWMClass=Google-chrome
+Actions=new-window;new-private-window;
+
+[Desktop Action new-window]
+Name=New Window
+Exec=/usr/local/bin/pidesktop-chrome
+
+[Desktop Action new-private-window]
+Name=New Incognito Window
+Exec=/usr/local/bin/pidesktop-chrome --incognito

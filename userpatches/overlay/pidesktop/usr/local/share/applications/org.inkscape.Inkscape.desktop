@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Inkscape
+Comment=Vector drawing and SVG editing. Downloads on first use.
+Exec=/usr/local/bin/pidesktop-get inkscape %U
+Icon=pidesktop-get-graphics
+Terminal=false
+Categories=Graphics;VectorGraphics;
+Keywords=inkscape;vector;svg;drawing;illustration;
+StartupNotify=true

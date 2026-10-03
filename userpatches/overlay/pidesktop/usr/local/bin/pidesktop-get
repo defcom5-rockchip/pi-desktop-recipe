@@ -1,0 +1,49 @@
+#!/bin/bash
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 defcom5-rockchip (Pi-Desktop). See LICENSE in the recipe repository.
+# pidesktop-get — open an app that Pi-Desktop doesn't ship in the image; if it isn't installed yet, offer to download it
+# from its own repository first (the same pattern as pidesktop-chrome). The image stays under GitHub's 2 GiB release limit
+# and the user still finds every app in the app grid: a placeholder launcher runs this script, and the installer removes
+# the placeholder once the real app's own menu entry exists.
+#
+# Usage: pidesktop-get <app> [arguments for the app]      apps: libreoffice gimp inkscape thunderbird vscodium firefox
+set -u
+APP=${1:-}; [[ $# -gt 0 ]] && shift
+RUN=""   # what to exec once installed (defaults to BIN)
+case $APP in
+	libreoffice) BIN=/usr/bin/libreoffice; TITLE="LibreOffice";  ICON=pidesktop-get-office
+	             WHAT="LibreOffice (Writer, Calc, Impress, Draw and Math)"; FROM="Ubuntu"; SIZE="about 120 MB" ;;
+	gimp)        BIN=/usr/bin/gimp;        TITLE="GIMP";         ICON=pidesktop-get-graphics
+	             WHAT="GIMP, the image editor"; FROM="Ubuntu"; SIZE="about 30 MB" ;;
+	inkscape)    BIN=/usr/bin/inkscape;    TITLE="Inkscape";     ICON=pidesktop-get-graphics
+	             WHAT="Inkscape, the vector drawing app"; FROM="Ubuntu"; SIZE="about 30 MB" ;;
+	thunderbird) BIN=/usr/bin/thunderbird; TITLE="Thunderbird";  ICON=pidesktop-get-mail
+	             WHAT="Thunderbird, the mail and calendar app"; FROM="the Ubuntu Mozilla Team"; SIZE="about 75 MB" ;;
+	vscodium)    BIN=/usr/bin/codium;      TITLE="VSCodium";     ICON=pidesktop-get-code
+	             WHAT="VSCodium, the community build of VS Code with Microsoft's telemetry removed"; FROM="the VSCodium project"; SIZE="about 160 MB" ;;
+	firefox)     BIN=/usr/bin/firefox;     TITLE="Firefox";      ICON=pidesktop-get-web; RUN=/usr/local/bin/firefox
+	             WHAT="Firefox, set up for this board's graphics chip (10-bit hardware video)"; FROM="the Ubuntu Mozilla Team"; SIZE="about 90 MB" ;;
+	--list)      echo "libreoffice gimp inkscape thunderbird vscodium firefox"; exit 0 ;;
+	*)           echo "usage: pidesktop-get <libreoffice|gimp|inkscape|thunderbird|vscodium|firefox> [args]" >&2; exit 2 ;;
+esac
+
+if [[ ! -x $BIN ]]; then
+	zenity --question --title="$TITLE" --icon="$ICON" --width=460 --ok-label="Install" --cancel-label="Not Now" \
+		--text="$TITLE isn't installed yet.\n\nPi-Desktop keeps the image small and adds $WHAT when you want it. It is downloaded from $FROM ($SIZE) and then updates together with the rest of your software." \
+		|| exit 0
+	# every output line becomes the dialog's status text ("# ..."), trimmed to fit. The installer prints nothing until
+	# pkexec has the password, so the first text says what is really happening then. --no-cancel stays: closing the
+	# window would break the pipe and kill apt mid-install.
+	pkexec /usr/local/sbin/pidesktop-install-app "$APP" 2>&1 | sed -u 's/^\(.\{0,64\}\).*/# \1/' |
+		zenity --progress --pulsate --auto-close --no-cancel --title="$TITLE" --width=460 \
+			--text="Waiting for your password…"
+	rc=${PIPESTATUS[0]}
+	if [[ ! -x $BIN ]]; then
+		[[ $rc -eq 126 ]] && exit 0   # password dialog dismissed
+		zenity --error --title="$TITLE" --width=460 \
+			--text="$TITLE couldn't be installed. Check the network connection and try again.\n\nDetails: /var/log/pidesktop-install-app.log"
+		exit 1
+	fi
+fi
+[[ -n $RUN && -x $RUN ]] && exec "$RUN" "$@"
+exec "$BIN" "$@"

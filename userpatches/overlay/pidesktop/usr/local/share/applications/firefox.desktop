@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Firefox Web Browser
+Comment=Firefox, set up for this board's graphics (10-bit hardware video). Downloads on first use.
+Exec=/usr/local/bin/pidesktop-get firefox %u
+Icon=pidesktop-get-web
+Terminal=false
+Categories=Network;WebBrowser;
+Keywords=firefox;browser;web;internet;
+StartupNotify=true

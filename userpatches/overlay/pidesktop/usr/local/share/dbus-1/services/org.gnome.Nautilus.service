@@ -1,0 +1,6 @@
+# Pi-Desktop override of /usr/share/dbus-1/services/org.gnome.Nautilus.service (/usr/local/share is searched first):
+# activate Nautilus through its systemd user unit so it gets its own cgroup (see /etc/systemd/user/org.gnome.Nautilus.service).
+[D-BUS Service]
+Name=org.gnome.Nautilus
+Exec=/usr/bin/nautilus --gapplication-service
+SystemdService=org.gnome.Nautilus.service

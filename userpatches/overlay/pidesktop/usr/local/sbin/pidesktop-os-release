@@ -1,0 +1,30 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 defcom5-rockchip (Pi-Desktop). See LICENSE in the recipe repository.
+# Pi-Desktop: keep our identity in os-release. Armbian's base-files writes its own PRETTY_NAME/LOGO/URLs into
+# /etc/os-release (a regular file there, not Ubuntu's symlink); this runs at build time and after every dpkg run.
+# The functional fields stay Ubuntu's (ID=ubuntu, VERSION_ID, VERSION_CODENAME, ID_LIKE): apt, PPAs and third-party
+# installers key on them. The product fields are ours (Canonical IP policy: a modified image must not carry the
+# Ubuntu mark as its name). "Built from Ubuntu 26.04 packages" is said in the docs, not in NAME.
+R=/etc/pi-desktop-release
+[ -r "$R" ] || exit 0
+VER=$(cat "$R")
+set_kv() {   # file key value — replace the line or append it
+	if grep -q "^$2=" "$1"; then
+		sed -i "s|^$2=.*|$2=\"$3\"|" "$1"
+	else
+		printf '%s="%s"\n' "$2" "$3" >> "$1"
+	fi
+}
+for f in /etc/os-release /usr/lib/os-release; do
+	[ -f "$f" ] && [ ! -L "$f" ] || continue
+	set_kv "$f" NAME "Pi-Desktop"
+	set_kv "$f" PRETTY_NAME "Pi-Desktop $VER"
+	set_kv "$f" LOGO "pi-desktop"
+	set_kv "$f" HOME_URL "https://defcom5-rockchip.github.io/pi-desktop/"
+	set_kv "$f" DOCUMENTATION_URL "https://github.com/defcom5-rockchip/pi-desktop"
+	set_kv "$f" SUPPORT_URL "https://github.com/defcom5-rockchip/pi-desktop/issues"
+	set_kv "$f" BUG_REPORT_URL "https://github.com/defcom5-rockchip/pi-desktop/issues"
+	set_kv "$f" PRIVACY_POLICY_URL "https://defcom5-rockchip.github.io/pi-desktop/privacy.html"
+done
+exit 0

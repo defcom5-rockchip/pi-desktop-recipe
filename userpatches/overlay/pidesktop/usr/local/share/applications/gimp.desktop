@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=GIMP Image Editor
+Comment=Create images and edit photographs. Downloads on first use.
+Exec=/usr/local/bin/pidesktop-get gimp %U
+Icon=pidesktop-get-graphics
+Terminal=false
+Categories=Graphics;2DGraphics;RasterGraphics;
+Keywords=gimp;image;photo;editor;paint;
+StartupNotify=true

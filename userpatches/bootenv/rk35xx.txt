@@ -1,0 +1,4 @@
+verbosity=1
+bootlogo=false
+console=both
+extraargs=cma=512M dw_hdmi_qp.frl_update_poll_ms=0 rockchipdrm.allow_frl=1

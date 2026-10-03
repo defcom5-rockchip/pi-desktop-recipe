@@ -1,0 +1,33 @@
+#!/bin/bash
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 defcom5-rockchip (Pi-Desktop). See LICENSE in the recipe repository.
+# pidesktop-chrome — open Google Chrome with Pi-Desktop's hardware-video flags; if Chrome isn't installed yet,
+# offer to download it from Google first (Pi-Desktop may not ship Chrome itself). Chrome reads no flags file,
+# so the flags live here, not in Chrome's own launcher, and Chrome updates can't strip them.
+CHROME=/usr/bin/google-chrome-stable
+FLAGS=(--ozone-platform=wayland --render-node-override=/dev/dri/renderD128
+	--enable-features=AcceleratedVideoDecoder,AcceleratedVideoDecodeLinuxGL,AcceleratedVideoDecodeLinuxZeroCopyGL,PlatformHEVCDecoderSupport)
+TITLE="Google Chrome"
+
+if [[ ! -x $CHROME ]]; then
+	zenity --question --title="$TITLE" --icon=web-browser --width=440 --ok-label="Install" --cancel-label="Not Now" \
+		--text="Google Chrome isn't installed yet.\n\nPi-Desktop can't include Chrome, but it can download it from Google for you (about 120 MB). After that it updates with the rest of your software." \
+		|| exit 0
+	# every output line becomes the dialog's status text ("# ..."), trimmed to fit. The installer prints nothing until
+	# pkexec has the password, so the first text says what is really happening then. --no-cancel stays: closing the
+	# window would break the pipe and kill apt mid-install.
+	pkexec /usr/local/sbin/pidesktop-install-chrome 2>&1 | sed -u 's/^\(.\{0,64\}\).*/# \1/' |
+		zenity --progress --pulsate --auto-close --no-cancel --title="$TITLE" --width=440 \
+			--text="Waiting for your password…"
+	rc=${PIPESTATUS[0]}
+	if [[ ! -x $CHROME ]]; then
+		[[ $rc -eq 126 ]] && exit 0   # password dialog dismissed
+		zenity --error --title="$TITLE" --width=440 \
+			--text="Google Chrome couldn't be installed. Check the network connection and try again.\n\nDetails: /var/log/pidesktop-install-chrome.log"
+		exit 1
+	fi
+	zenity --question --title="$TITLE" --width=440 --ok-label="Make Default" --cancel-label="Keep Current" \
+		--text="Google Chrome is installed.\n\nMake it your default web browser?" \
+		&& xdg-settings set default-web-browser google-chrome.desktop
+fi
+exec "$CHROME" "${FLAGS[@]}" "$@"

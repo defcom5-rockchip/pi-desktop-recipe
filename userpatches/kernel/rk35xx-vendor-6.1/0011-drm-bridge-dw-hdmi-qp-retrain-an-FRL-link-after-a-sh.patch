@@ -1,0 +1,227 @@
+From 97a780cd4f471b3b8866ea572ec1537c7297d229 Mon Sep 17 00:00:00 2001
+From: defcom5-rockchip <286489597+defcom5-rockchip@users.noreply.github.com>
+Date: Fri, 25 Sep 2026 12:14:36 -0700
+Subject: [PATCH] drm/bridge: dw-hdmi-qp: retrain an FRL link after a short HPD
+ drop
+
+On an Orange Pi 5B (RK3588S) at 3840x2160@120 over FRL (10G x 4 lanes),
+switching the monitor off with its power button makes the sink drop HPD
+for about 0.35 s. The post-training loop in dw_hdmi_qp_flt_ltsp() sees HPD
+low ("hdmi dclk is disabled, stop poll flt_update") and leaves through
+LTSL, which writes FRL_Rate = 0 to the sink's SCDC and ends flt_work. When
+HPD comes back nothing restarts training: dw_hdmi_qp_handle_hpd() returns
+early when the TMDS character rate is above 600 MHz, repo_hpd_event() only
+runs detect and sends the uevent, and userspace sees the same connector
+and mode, so there is no modeset. The CRTC stays enabled on an untrained
+link and the screen stays black after the monitor is switched back on. A
+DPMS off/on from the compositor (full modeset and link training) brings
+the picture back. At TMDS rates dw_hdmi_qp_handle_hpd() re-enables the
+PHY on HPD high, so TMDS modes recover without help.
+
+Add dw_hdmi_qp_frl_retrain() and call it from repo_hpd_event() after every
+debounced HPD-high, with or without a connector status change (an HPD drop
+too short for detect to see can still end training). It queues flt_work
+again, starting at LTS1 as bridge_atomic_enable does, only when:
+
+ - an FRL output is enabled: the new frl_rate is set in atomic_enable and
+   cleared in atomic_disable after flt_work has been cancelled, and
+   dclk_en and !disabled are required as well, so an output that is off
+   (DPMS off) and TMDS outputs are left alone;
+ - flt_work is neither queued nor running: the new flt_active is set by
+   whoever queues it and cleared when the work ends and in atomic_disable,
+   so there is at most one attempt per HPD-high edge and none while the
+   link sits in LTSP;
+ - HPD reads high.
+
+flt_work now takes its starting rate from frl_rate instead of re-reading
+link_cfg. The glue rewrites link_cfg in every encoder atomic_check,
+TEST_ONLY checks included, so once the output is enabled link_cfg can
+describe a mode that was only tested (for a TMDS mode it holds the sink's
+maximum lanes and rate, not the committed ones). The rate the state
+machine ends on is written back, because LTS4 leaves the PHY running at
+the lowered rate.
+
+dw_hdmi_qp_flt_ltsp() still leaves on HPD low: a real unplug has to end
+FRL, and leaving the loop is what lets the next HPD-high retrain.
+
+Locking follows the existing code: hdmi->mutex, then audio_mutex, as in
+dw_hdmi_qp_handle_hpd() and atomic_disable, and flt_work is never waited
+for with hdmi->mutex held.
+
+A retrain prints "HPD high on an enabled FRL output, retraining the link";
+a successful one ends with the existing "flt success".
+
+Compile-tested only so far; not yet run on hardware.
+
+An LLM assistant (Claude, Anthropic) traced the code path and drafted this
+change and its description; the failure was observed on real hardware.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ drivers/gpu/drm/bridge/synopsys/dw-hdmi-qp.c  | 66 +++++++++++++++++--
+ .../gpu/drm/rockchip/dw_hdmi_qp-rockchip.c    |  7 ++
+ include/drm/bridge/dw_hdmi.h                  |  1 +
+ 3 files changed, 70 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/gpu/drm/bridge/synopsys/dw-hdmi-qp.c b/drivers/gpu/drm/bridge/synopsys/dw-hdmi-qp.c
+index ae1f61be10db..a8e680ed4739 100644
+--- a/drivers/gpu/drm/bridge/synopsys/dw-hdmi-qp.c
++++ b/drivers/gpu/drm/bridge/synopsys/dw-hdmi-qp.c
+@@ -369,6 +369,8 @@ struct dw_hdmi_qp {
+ 	bool update;
+ 	bool hdr2sdr;
+ 	bool flt_no_timeout;
++	u8 frl_rate;			/* enabled FRL link, lanes * Gbps; 0 = none */
++	bool flt_active;		/* flt_work queued or running */
+ 
+ 	u8 next_tfr;
+ 	u8 old_fva_factor_m1;
+@@ -2736,12 +2738,16 @@ int dw_hdmi_hdcp2_notifier_callback(struct notifier_block *nb, unsigned long eve
+ static void dw_hdmi_qp_flt_work(struct work_struct *p_work)
+ {
+ 	struct dw_hdmi_qp *hdmi = container_of(p_work, struct dw_hdmi_qp, flt_work);
+-	void *data = hdmi->plat_data->phy_data;
+-	struct dw_hdmi_link_config *link_cfg = hdmi->plat_data->get_link_cfg(data);
+ 	u8 frl_rate;
+ 	int state = LTS1;
+ 
+-	frl_rate = link_cfg->frl_lanes * link_cfg->rate_per_lane;
++	/*
++	 * Use the rate recorded at atomic_enable, not link_cfg: link_cfg is
++	 * rewritten by every atomic_check, TEST_ONLY ones included.
++	 */
++	mutex_lock(&hdmi->mutex);
++	frl_rate = hdmi->frl_rate;
++	mutex_unlock(&hdmi->mutex);
+ 
+ 	while (1) {
+ 		switch (state) {
+@@ -2770,6 +2776,12 @@ static void dw_hdmi_qp_flt_work(struct work_struct *p_work)
+ 		if (state <= 0)
+ 			break;
+ 	}
++
++	/* keep a rate lowered by LTS4: the PHY now runs at it */
++	mutex_lock(&hdmi->mutex);
++	hdmi->frl_rate = frl_rate;
++	hdmi->flt_active = false;
++	mutex_unlock(&hdmi->mutex);
+ }
+ 
+ static int dw_hdmi_qp_setup(struct dw_hdmi_qp *hdmi,
+@@ -3307,6 +3319,38 @@ void dw_hdmi_qp_handle_hpd(struct dw_hdmi_qp *hdmi, bool enable)
+ }
+ EXPORT_SYMBOL_GPL(dw_hdmi_qp_handle_hpd);
+ 
++/*
++ * A short HPD drop (e.g. a monitor switched off with its power button) ends
++ * FRL link training: dw_hdmi_qp_flt_ltsp() sees HPD low and leaves through
++ * LTSL, which sets the sink's FRL_Rate to 0. dw_hdmi_qp_handle_hpd() does
++ * nothing for FRL and userspace sees the same connector and mode, so there
++ * is no modeset and the enabled CRTC is left on an untrained link.
++ *
++ * Called by the platform glue on a debounced HPD-high edge: if an FRL output
++ * is enabled and flt_work is neither queued nor running, restart training
++ * from LTS1 as dw_hdmi_qp_bridge_atomic_enable() does. At most one attempt
++ * per call; a disabled output (DPMS off) and TMDS outputs are left alone.
++ */
++void dw_hdmi_qp_frl_retrain(struct dw_hdmi_qp *hdmi)
++{
++	if (IS_ERR_OR_NULL(hdmi))
++		return;
++
++	if (hdmi->phy.ops->read_hpd(hdmi, hdmi->phy.data) != connector_status_connected)
++		return;
++
++	mutex_lock(&hdmi->mutex);
++	mutex_lock(&hdmi->audio_mutex);
++	if (hdmi->frl_rate && hdmi->dclk_en && !hdmi->disabled && !hdmi->flt_active) {
++		dev_info(hdmi->dev, "HPD high on an enabled FRL output, retraining the link\n");
++		hdmi->flt_active = true;
++		queue_work(hdmi->workqueue, &hdmi->flt_work);
++	}
++	mutex_unlock(&hdmi->audio_mutex);
++	mutex_unlock(&hdmi->mutex);
++}
++EXPORT_SYMBOL_GPL(dw_hdmi_qp_frl_retrain);
++
+ void dw_hdmi_qp_set_gaming_vrr_enable(struct dw_hdmi_qp *hdmi, bool enable)
+ {
+ 	if (!hdmi)
+@@ -4175,6 +4219,12 @@ static void dw_hdmi_qp_bridge_atomic_disable(struct drm_bridge *bridge,
+ 
+ 	cancel_work_sync(&hdmi->flt_work);
+ 	flush_workqueue(hdmi->workqueue);
++
++	mutex_lock(&hdmi->mutex);
++	hdmi->frl_rate = 0;
++	hdmi->flt_active = false;
++	mutex_unlock(&hdmi->mutex);
++
+ 	dw_hdmi_qp_flt_ltsl(hdmi);
+ 
+ 	if (hdmi->panel)
+@@ -4189,6 +4239,7 @@ static void dw_hdmi_qp_bridge_atomic_enable(struct drm_bridge *bridge,
+ 	struct drm_connector *connector;
+ 	void *data = hdmi->plat_data->phy_data;
+ 	struct dw_hdmi_link_config *link_cfg = NULL;
++	bool frl = false;
+ 
+ 	if (hdmi->plat_data->get_link_cfg)
+ 		link_cfg = hdmi->plat_data->get_link_cfg(data);
+@@ -4207,6 +4258,13 @@ static void dw_hdmi_qp_bridge_atomic_enable(struct drm_bridge *bridge,
+ 		hdmi_writel(hdmi, 2, PKTSCHED_PKT_CONTROL0);
+ 		hdmi_modb(hdmi, PKTSCHED_GCP_TX_EN, PKTSCHED_GCP_TX_EN, PKTSCHED_PKT_EN);
+ 	}
++
++	/* flt_work is queued below; record the link for it and for retrains */
++	if (link_cfg && link_cfg->frl_mode) {
++		frl = true;
++		hdmi->frl_rate = link_cfg->frl_lanes * link_cfg->rate_per_lane;
++		hdmi->flt_active = true;
++	}
+ 	mutex_unlock(&hdmi->mutex);
+ 
+ 	if (!hdmi->dclk_en) {
+@@ -4219,7 +4277,7 @@ static void dw_hdmi_qp_bridge_atomic_enable(struct drm_bridge *bridge,
+ 		mutex_unlock(&hdmi->audio_mutex);
+ 	}
+ 
+-	if (link_cfg && link_cfg->frl_mode)
++	if (frl)
+ 		queue_work(hdmi->workqueue, &hdmi->flt_work);
+ 
+ 	dw_hdmi_qp_init_audio_infoframe(hdmi);
+diff --git a/drivers/gpu/drm/rockchip/dw_hdmi_qp-rockchip.c b/drivers/gpu/drm/rockchip/dw_hdmi_qp-rockchip.c
+index 4f8f012d2f7f..4479587bf06a 100644
+--- a/drivers/gpu/drm/rockchip/dw_hdmi_qp-rockchip.c
++++ b/drivers/gpu/drm/rockchip/dw_hdmi_qp-rockchip.c
+@@ -1046,6 +1046,13 @@ static void repo_hpd_event(struct work_struct *p_work)
+ 		dw_hdmi_qp_handle_hpd(hdmi->hdmi_qp, hdmi->hpd_stat);
+ 		dw_hdmi_qp_cec_set_hpd(hdmi->hdmi_qp, hdmi->hpd_stat, change);
+ 	}
++
++	/*
++	 * Also without a status change: an HPD drop too short for detect to
++	 * see can still have ended FRL link training.
++	 */
++	if (hdmi->hpd_stat)
++		dw_hdmi_qp_frl_retrain(hdmi->hdmi_qp);
+ }
+ 
+ static irqreturn_t rk3538_hdmi_hardirq(int irq, void *dev_id)
+diff --git a/include/drm/bridge/dw_hdmi.h b/include/drm/bridge/dw_hdmi.h
+index aad14d0fae4e..66ee2a1c0e7d 100644
+--- a/include/drm/bridge/dw_hdmi.h
++++ b/include/drm/bridge/dw_hdmi.h
+@@ -388,6 +388,7 @@ void dw_hdmi_phy_init(struct dw_hdmi *hdmi);
+ void dw_hdmi_qp_set_allm_enable(struct dw_hdmi_qp *hdmi_qp, struct drm_connector *conn,
+ 				bool enable);
+ void dw_hdmi_qp_handle_hpd(struct dw_hdmi_qp *hdmi, bool enable);
++void dw_hdmi_qp_frl_retrain(struct dw_hdmi_qp *hdmi);
+ void dw_hdmi_qp_set_gaming_vrr_enable(struct dw_hdmi_qp *hdmi_qp, bool enable);
+ void dw_hdmi_qp_set_qms(struct dw_hdmi_qp *hdmi, u8 next_tfr, u8 m_const);
+ u8 dw_hdmi_qp_get_next_tfr(struct dw_hdmi_qp *hdmi);
+-- 
+2.53.0
+

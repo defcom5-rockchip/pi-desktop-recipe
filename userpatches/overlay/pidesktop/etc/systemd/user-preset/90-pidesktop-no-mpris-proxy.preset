@@ -1,0 +1,3 @@
+# Pi Desktop: do not bridge MPRIS players to Bluetooth AVRCP. Some speakers (WiiM Ultra) mute ~10 s on every
+# STOPPED notification, and browsers flip media-session state at every ad. Users can re-enable per account.
+disable mpris-proxy.service

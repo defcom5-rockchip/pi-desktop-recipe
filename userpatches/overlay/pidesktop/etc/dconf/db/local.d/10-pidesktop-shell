@@ -1,0 +1,48 @@
+# /etc/dconf/db/local.d/10-pidesktop-shell — Pi Desktop shell layout (Chrome first: default browser since 2026-09-23) (run `dconf update` after installing)
+# Armbian's 00-bg ships vanilla GNOME (no dock, no desktop icons). This restores the Pi Desktop 2.0.x look:
+# bottom dock (Launchpad style) with the "Show Apps" button at the right end, Home + Trash on the desktop.
+# Later files win over 00-bg for the same key; users still override per-account via Settings/gsettings.
+
+[org/gnome/shell]
+enabled-extensions=['ubuntu-dock@ubuntu.com', 'ding@rastersoft.com', 'ubuntu-appindicators@ubuntu.com', 'tiling-assistant@ubuntu.com']
+favorite-apps=['org.gnome.Nautilus.desktop', 'google-chrome.desktop', 'chromium.desktop', 'firefox.desktop', 'mpv.desktop', 'terminator.desktop', 'org.gnome.Settings.desktop']
+# GNOME hides "Log Out" in the power menu when there is one local user and one session type — every fresh Pi-Desktop
+always-show-log-out=true
+
+[org/gnome/shell/extensions/dash-to-dock]
+dock-position='BOTTOM'
+show-apps-at-top=false
+show-show-apps-button=true
+extend-height=true
+dock-fixed=false
+autohide=true
+autohide-in-fullscreen=false
+intellihide=false
+dash-max-icon-size=40
+icon-size-fixed=true
+background-opacity=0.8
+transparency-mode='DEFAULT'
+apply-custom-theme=false
+custom-theme-shrink=true
+click-action='focus-or-appspread'
+running-indicator-style='DOTS'
+# 2026-09-23: user removed Trash from the dock (Trash stays on the desktop, see [org/gnome/shell/extensions/ding])
+show-trash=false
+show-mounts=true
+multi-monitor=false
+
+[org/gnome/shell/extensions/ding]
+show-home=true
+show-trash=true
+show-volumes=false
+show-network-volumes=false
+
+# Pi-Desktop 4.0 "Plaid" default wallpaper (penguins under plaid parachutes, 3840x2160)
+[org/gnome/desktop/background]
+picture-uri='file:///usr/share/backgrounds/pi-desktop/penguin-drop-plaid-v2-3840x2160.png'
+picture-uri-dark='file:///usr/share/backgrounds/pi-desktop/penguin-drop-plaid-v2-3840x2160.png'
+picture-options='zoom'
+primary-color='#1b2a55'
+
+[org/gnome/desktop/screensaver]
+picture-uri='file:///usr/share/backgrounds/pi-desktop/penguin-drop-plaid-v2-3840x2160.png'

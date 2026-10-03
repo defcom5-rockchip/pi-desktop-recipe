@@ -1,0 +1,46 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: defcom5-rockchip <286489597+defcom5-rockchip@users.noreply.github.com>
+Date: Mon, 8 Jun 2026 15:21:58 -0700
+Subject: [PATCH 2/5] arm64: dts: rockchip: orangepi-5: bump CMA pool 256M ->
+ 1024M
+
+The board's linux,cma-default region (in rk3588s-orangepi-5.dts, which
+overrides the 8MB generic node in rk3588-linux.dtsi) was fixed at 256MB
+for the hdmirx controller. Raise it to 1024MB for headroom with
+multi-stream 4K decode/encode and HDMI-in capture.
+
+Switch from a fixed `reg` to a `size`-based reservation so the kernel
+auto-places the larger 1GB region rather than pinning it at 0x10000000.
+
+Note: not strictly required for the VOP2 4K@120Hz display fix (framebuffer
+size is independent of refresh rate); this is extra video-memory headroom.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+(cherry picked from commit 1cb82d029cedd3074b41dcac173e71f35583609e)
+---
+ arch/arm64/boot/dts/rockchip/rk3588s-orangepi-5.dts | 9 +++++++--
+ 1 file changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/rockchip/rk3588s-orangepi-5.dts b/arch/arm64/boot/dts/rockchip/rk3588s-orangepi-5.dts
+index 71d4a6b54290..9e87a97cf288 100755
+--- a/arch/arm64/boot/dts/rockchip/rk3588s-orangepi-5.dts
++++ b/arch/arm64/boot/dts/rockchip/rk3588s-orangepi-5.dts
+@@ -263,11 +263,16 @@ reserved-memory {
+ 		#size-cells = <2>;
+ 		ranges;
+ 
+-		/* Reserve 256MB memory for hdmirx-controller@fdee0000 */
++		/*
++		 * CMA pool for hdmirx-controller@fdee0000, VPU and display.
++		 * Bumped 256MB -> 1024MB for headroom (multi-stream 4K
++		 * decode/encode, HDMI-in capture). Use size= so the kernel
++		 * auto-places the larger region instead of a fixed reg.
++		 */
+ 		cma {
+ 			compatible = "shared-dma-pool";
+ 			reusable;
+-			reg = <0x0 (256 * 0x100000) 0x0 (256 * 0x100000)>;
++			size = <0x0 (1024 * 0x100000)>;
+ 			linux,cma-default;
+ 		};
+ 	};

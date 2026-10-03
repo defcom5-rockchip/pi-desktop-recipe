@@ -1,0 +1,12 @@
+# gnome-control-center 1:50.3-0ubuntu0.2 patch for Pi-Desktop (current build: +pd3.3)
+Power panel: a "Screensaver" group replaces Automatic Screen Blank. Text: "Pi-Desktop uses a screensaver instead of
+blanking the screen." (+pd3.3, 2026-09-26; +pd3.2 said the display could not resume at 4K@120 Hz — fixed by kernel
+patches 0010/0011, wording changed.)
+
+Rebuild on an Orange Pi 5B booted from SD, with a spare eMMC: copy pidesktop-power-screensaver.patch and
+rebuild-settings.sh into one folder and run `sudo bash rebuild-settings.sh`. It creates an Ubuntu 26.04 build root at
+/srv/pd3-build on the eMMC if missing (debootstrap, build-deps, apt source; first run ~9 min incl. build), applies the
+patch as the last quilt patch, bumps the version (edit VER in the script for the next one) and leaves the three .debs
+next to the script. Nothing is installed on the running system; the eMMC's own OS is untouched apart from /srv/pd3-build.
+Debs -> overlay/pidesktop/debs/gcc/ (only one version there: the recipe installs by glob). Re-do whenever Ubuntu ships
+a new gnome-control-center (apt-mark hold keeps ours meanwhile).

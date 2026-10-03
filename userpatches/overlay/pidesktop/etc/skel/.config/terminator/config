@@ -1,0 +1,50 @@
+# Terminator — Pi-Desktop 4.0 "Plaid" (design by Plaid Claude, 2026-09-26)
+# Palette: orange #E85020 · cream #F3E2B8 · navy #1b2a55 (wallpaper base)
+# Window 1480x800 = 147 cols x 36 rows in Ubuntu Sans Mono 13 (measured on the Plaid 2026-09-27; the same at any scale,
+# the size is in logical px). The fastfetch greeting's info column starts at col 78, so this leaves room for its lines.
+[global_config]
+  inactive_color_offset = 0.8
+  suppress_multiple_term_dialog = True
+  handle_size = 2
+[keybindings]
+[profiles]
+  [[default]]
+    # colours
+    background_type = solid
+    background_color = "#101a36"
+    foreground_color = "#f3e2b8"
+    cursor_color_default = False
+    cursor_bg_color = "#e85020"
+    cursor_fg_color = "#101a36"
+    cursor_shape = block
+    cursor_blink = True
+    bold_is_bright = False
+    palette = "#1b2a55:#e0533d:#8fb573:#e8b04a:#6a93d8:#c678a8:#5fb3b3:#d8cba8:#4a5a85:#ff7a4d:#a9cf8a:#f3cf6b:#8fb0ee:#e39ac6:#86d1cf:#f3e2b8"
+    # font
+    use_system_font = False
+    font = Ubuntu Sans Mono 13
+    # chrome: GNOME already draws a titlebar, so hide Terminator's second one
+    show_titlebar = False
+    title_hide_sizetext = True
+    title_transmit_bg_color = "#e85020"
+    title_transmit_fg_color = "#f3e2b8"
+    title_receive_bg_color = "#1b2a55"
+    title_receive_fg_color = "#f3e2b8"
+    title_inactive_bg_color = "#1b2a55"
+    title_inactive_fg_color = "#8d93a8"
+    scrollbar_position = hidden
+    # behaviour
+    scrollback_lines = 10000
+    audible_bell = False
+    icon_bell = False
+[layouts]
+  [[default]]
+    [[[window0]]]
+      type = Window
+      parent = ""
+      size = 1480, 800
+    [[[child1]]]
+      type = Terminal
+      parent = window0
+      profile = default
+[plugins]

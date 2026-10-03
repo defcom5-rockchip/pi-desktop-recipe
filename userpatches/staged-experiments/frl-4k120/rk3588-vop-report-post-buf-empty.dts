@@ -1,0 +1,14 @@
+// Pi-Desktop experiment overlay: make the vendor VOP2 driver LOG display-engine underflows (POST_BUF_EMPTY).
+// Rate-limited in the driver (100/min). Purpose: during a 4K@120 run, see whether bandwidth starvation
+// precedes the sink losing the link. Install on Armbian:  sudo armbian-add-overlay rk3588-vop-report-post-buf-empty.dts
+/dts-v1/;
+/plugin/;
+/ {
+	compatible = "rockchip,rk3588";
+	fragment@0 {
+		target-path = "/vop@fdd90000";
+		__overlay__ {
+			rockchip,report-post-buf-empty;
+		};
+	};
+};

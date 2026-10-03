@@ -1,0 +1,409 @@
+Description: Power panel: Screensaver group replaces Automatic Screen Blank (Pi-Desktop)
+ Pi-Desktop uses a screensaver instead of blanking the screen. The former blank-screen
+ group now shows the settings of the pidesktop-screensaver user service: file, delay,
+ lock, folder and preview.
+ Hidden automatically when the org.pidesktop.screensaver schema (or a key it needs) is absent.
+Author: defcom5-rockchip
+Forwarded: not-needed
+
+diff -Naur gnome-control-center-50.3/panels/power/cc-power-panel.blp work/panels/power/cc-power-panel.blp
+--- a/panels/power/cc-power-panel.blp	2026-06-24 02:00:08.000000000 -0700
++++ b/panels/power/cc-power-panel.blp	2026-09-24 19:44:39.011109115 -0700
+@@ -201,20 +201,51 @@
+             }
+ 
+             Adw.PreferencesGroup blank_screen_group {
+-              Adw.SwitchRow blank_screen_switch_row {
+-                title: _("Automatic Screen _Blank");
+-                subtitle: _("Turn the screen off after a period of inactivity");
++              title: _("Screensaver");
++              description: _("Pi-Desktop uses a screensaver instead of blanking the screen.");
++
++              Adw.ComboRow screensaver_file_row {
++                title: _("_Screensaver");
++                subtitle: _("Pictures and videos from the Pictures/screensaver folder");
+                 use-underline: true;
+-                notify::active => $blank_screen_switch_cb(template);
++                notify::selected => $screensaver_file_cb(template);
+               }
+ 
+-              $CcNumberRow blank_screen_delay_row {
+-                title: _("D_elay");
++              $CcNumberRow screensaver_delay_row {
++                title: _("Start A_fter");
+                 use-underline: true;
+-                sensitive: bind blank_screen_switch_row.active;
+-                values: "[60, 120, 180, 240, 300, 480, 600, 720, 900]";
++                values: "[60, 120, 180, 240, 300, 480, 600, 720, 900, 1200, 1800, 3600]";
+                 value-type: seconds;
+               }
++
++              Adw.SwitchRow screensaver_lock_row {
++                title: _("Ask for _Password Afterwards");
++                subtitle: _("Lock the session when the screensaver ends");
++                use-underline: true;
++              }
++
++              Adw.ActionRow screensaver_folder_row {
++                title: _("Screensaver Files");
++                use-markup: false;
++
++                [suffix]
++                Gtk.Button {
++                  label: _("Open Folder");
++                  valign: center;
++                  clicked => $screensaver_open_folder_cb(template);
++                }
++
++                [suffix]
++                Gtk.Button {
++                  label: _("Preview");
++                  valign: center;
++                  clicked => $screensaver_preview_cb(template);
++
++                  styles [
++                    "suggested-action",
++                  ]
++                }
++              }
+             }
+ 
+             Adw.PreferencesGroup suspend_on_battery_group {
+diff -Naur gnome-control-center-50.3/panels/power/cc-power-panel.c work/panels/power/cc-power-panel.c
+--- a/panels/power/cc-power-panel.c	2026-06-24 02:00:08.000000000 -0700
++++ b/panels/power/cc-power-panel.c	2026-09-24 19:44:39.010963478 -0700
+@@ -25,6 +25,7 @@
+ #include <glib/gi18n.h>
+ #include <gnome-settings-daemon/gsd-enums.h>
+ #include <gio/gdesktopappinfo.h>
++#include <string.h>
+ 
+ #include "shell/cc-object-storage.h"
+ #include "cc-battery-row.h"
+@@ -63,9 +64,16 @@
+   GtkListBox        *battery_listbox;
+   AdwSwitchRow      *battery_percentage_row;
+   AdwPreferencesGroup *battery_section;
+-  AdwSwitchRow      *blank_screen_switch_row;
+-  CcNumberRow       *blank_screen_delay_row;
+   AdwPreferencesGroup *blank_screen_group;
++  /* Pi-Desktop: screensaver service settings shown in place of the screen-blank rows */
++  AdwComboRow       *screensaver_file_row;
++  CcNumberRow       *screensaver_delay_row;
++  AdwSwitchRow      *screensaver_lock_row;
++  AdwActionRow      *screensaver_folder_row;
++  GSettings         *screensaver_settings;
++  GFileMonitor      *screensaver_monitor;
++  GPtrArray         *screensaver_files;
++  gboolean           screensaver_updating;
+   GtkListBox        *device_listbox;
+   AdwPreferencesGroup *device_section;
+   AdwSwitchRow      *dim_screen_row;
+@@ -226,15 +234,8 @@
+ 
+   /* TRANSLATORS: This is the same title as the title from the .ui file, but without mnemonic */
+   power_saving_title = _("Power Saving");
+-  if (gtk_widget_is_visible (GTK_WIDGET (self->power_saving_group)))
+-    {
+-      adw_preferences_group_set_title (self->power_saving_group, power_saving_title);
+-      adw_preferences_group_set_title (self->blank_screen_group, "");
+-    }
+-  else
+-    {
+-      adw_preferences_group_set_title (self->blank_screen_group, power_saving_title);
+-    }
++  /* Pi-Desktop: the former blank-screen group keeps its own "Screensaver" title */
++  adw_preferences_group_set_title (self->power_saving_group, power_saving_title);
+ }
+ 
+ static void
+@@ -736,49 +737,218 @@
+   als_enabled_state_changed (self);
+ }
+ 
++/* Pi-Desktop: the "Automatic Screen Blank" rows are replaced by the settings of the
++ * pidesktop-screensaver user service: Pi-Desktop uses a screensaver instead of
++ * blanking the screen. */
++#define SCREENSAVER_SCHEMA  "org.pidesktop.screensaver"
++#define SCREENSAVER_SERVICE "pidesktop-screensaver.service"
++
++static const char * const screensaver_exts[] = {
++  ".png", ".jpg", ".jpeg", ".webp", ".avif", ".gif", ".mp4", ".mkv", ".webm", ".mov", ".m4v", NULL
++};
++static const char * const screensaver_video_exts[] = { ".mp4", ".mkv", ".webm", ".mov", ".m4v", NULL };
++
++static char *
++screensaver_dir (void)
++{
++  /* the same folder the service reads: ~/Pictures/screensaver */
++  return g_build_filename (g_get_home_dir (), "Pictures", "screensaver", NULL);
++}
++
++static gboolean
++screensaver_has_ext (const char *lower_name, const char * const *exts)
++{
++  for (guint i = 0; exts[i] != NULL; i++)
++    if (g_str_has_suffix (lower_name, exts[i]))
++      return TRUE;
++  return FALSE;
++}
++
++static int
++screensaver_compare_names (gconstpointer a, gconstpointer b)
++{
++  g_autofree char *ka = g_utf8_collate_key_for_filename (a, -1);
++  g_autofree char *kb = g_utf8_collate_key_for_filename (b, -1);
++
++  return strcmp (ka, kb);
++}
++
++static char *
++screensaver_pretty_name (const char *basename)
++{
++  g_autofree char *lower = g_ascii_strdown (basename, -1);
++  g_autofree char *stem = g_strdup (basename);
++  char *dot = strrchr (stem, '.');
++
++  if (dot != NULL)
++    *dot = '\0';
++  g_strdelimit (stem, "-_", ' ');
++
++  return g_strdup_printf ("%s  (%s)", stem,
++                          screensaver_has_ext (lower, screensaver_video_exts)
++                          ? C_("screensaver file kind", "video")
++                          : C_("screensaver file kind", "picture"));
++}
++
+ static void
+-blank_screen_switch_cb (CcPowerPanel *self)
++screensaver_refresh_files (CcPowerPanel *self)
+ {
+-  if (adw_switch_row_get_active (self->blank_screen_switch_row))
++  g_autofree char *dir = screensaver_dir ();
++  g_autofree char *current = g_settings_get_string (self->screensaver_settings, "file");
++  g_autoptr(GtkStringList) model = gtk_string_list_new (NULL);
++  g_autoptr(GDir) d = g_dir_open (dir, 0, NULL);
++  const char *name;
++  guint selected = 0;
++
++  g_ptr_array_set_size (self->screensaver_files, 0);
++  if (d != NULL)
+     {
+-      /* "Reset" to the delay value if coming from a disabled state */
+-      if (g_settings_get_uint (self->session_settings, "idle-delay") == 0)
++      while ((name = g_dir_read_name (d)) != NULL)
+         {
+-          guint position = adw_combo_row_get_selected (ADW_COMBO_ROW (self->blank_screen_delay_row));
++          g_autofree char *lower = g_ascii_strdown (name, -1);
++          g_autofree char *path = g_build_filename (dir, name, NULL);
+ 
+-          g_settings_set_uint (self->session_settings, "idle-delay",
+-                               cc_number_row_get_value (self->blank_screen_delay_row, position));
++          /* the "file" key is a GSettings string: non-UTF-8 names cannot be stored, skip them */
++          if (name[0] == '.' || !g_utf8_validate (name, -1, NULL) ||
++              !screensaver_has_ext (lower, screensaver_exts) ||
++              !g_file_test (path, G_FILE_TEST_IS_REGULAR))
++            continue;
++          g_ptr_array_add (self->screensaver_files, g_strdup (name));
+         }
+-
+-      cc_number_row_bind_settings (self->blank_screen_delay_row, self->session_settings, "idle-delay");
+     }
+-  else
++  g_ptr_array_sort_values (self->screensaver_files, screensaver_compare_names);
++
++  gtk_string_list_append (model, self->screensaver_files->len > 0
++                                 ? _("Slideshow (all files)")
++                                 : _("No files in the folder yet"));
++  for (guint i = 0; i < self->screensaver_files->len; i++)
+     {
+-      cc_number_row_unbind_settings (self->blank_screen_delay_row);
+-      g_settings_set_uint (self->session_settings, "idle-delay", 0);
++      const char *file = g_ptr_array_index (self->screensaver_files, i);
++      g_autofree char *pretty = screensaver_pretty_name (file);
++
++      gtk_string_list_append (model, pretty);
++      if (g_strcmp0 (file, current) == 0)
++        selected = i + 1;
+     }
++
++  self->screensaver_updating = TRUE;
++  adw_combo_row_set_model (self->screensaver_file_row, G_LIST_MODEL (model));
++  adw_combo_row_set_selected (self->screensaver_file_row, selected);
++  self->screensaver_updating = FALSE;
+ }
+ 
+-#define BLANK_SCREEN_DEFAULT 300
++static void
++screensaver_setting_changed_cb (CcPowerPanel *self)
++{
++  /* "file" was written by someone else (the service, dconf): resync the selection */
++  screensaver_refresh_files (self);
++}
++
++static void
++screensaver_file_cb (CcPowerPanel *self)
++{
++  const char *file = "";
++  guint pos;
++
++  if (self->screensaver_updating || self->screensaver_settings == NULL)
++    return;
++
++  pos = adw_combo_row_get_selected (self->screensaver_file_row);
++  if (pos != GTK_INVALID_LIST_POSITION && pos > 0 && pos <= self->screensaver_files->len)
++    file = g_ptr_array_index (self->screensaver_files, pos - 1);
++
++  /* our own write must not re-enter screensaver_refresh_files() from inside notify::selected */
++  g_signal_handlers_block_by_func (self->screensaver_settings, screensaver_setting_changed_cb, self);
++  g_settings_set_string (self->screensaver_settings, "file", file);
++  g_signal_handlers_unblock_by_func (self->screensaver_settings, screensaver_setting_changed_cb, self);
++}
++
++static void
++screensaver_dir_changed_cb (CcPowerPanel      *self,
++                            GFile             *file,
++                            GFile             *other_file,
++                            GFileMonitorEvent  event_type)
++{
++  /* a file being copied in emits a stream of CHANGED events: rescan on the final hint instead */
++  if (event_type == G_FILE_MONITOR_EVENT_CHANGED)
++    return;
++  screensaver_refresh_files (self);
++}
++
++static void
++screensaver_open_folder_cb (CcPowerPanel *self)
++{
++  g_autofree char *dir = screensaver_dir ();
++  g_autoptr(GFile) file = NULL;
++  g_autoptr(GtkFileLauncher) launcher = NULL;
++
++  g_mkdir_with_parents (dir, 0755);
++  file = g_file_new_for_path (dir);
++  launcher = gtk_file_launcher_new (file);
++  gtk_file_launcher_launch (launcher, GTK_WINDOW (gtk_widget_get_root (GTK_WIDGET (self))),
++                            NULL, NULL, NULL);
++}
++
++static void
++screensaver_preview_cb (CcPowerPanel *self)
++{
++  const char *argv[] = { "systemctl", "--user", "kill", "--kill-whom=main", "-s", "USR1",
++                         SCREENSAVER_SERVICE, NULL };
++
++  g_spawn_async (NULL, (char **) argv, NULL,
++                 G_SPAWN_SEARCH_PATH | G_SPAWN_STDOUT_TO_DEV_NULL | G_SPAWN_STDERR_TO_DEV_NULL,
++                 NULL, NULL, NULL, NULL);
++}
+ 
+ static void
+-setup_blank_screen_rows (CcPowerPanel *self)
++setup_screensaver_rows (CcPowerPanel *self)
+ {
+-  if (g_settings_get_uint (self->session_settings, "idle-delay") != 0)
++  static const char * const needed_keys[] = { "file", "delay", "lock-on-dismiss", NULL };
++  GSettingsSchemaSource *source = g_settings_schema_source_get_default ();
++  g_autoptr(GSettingsSchema) schema = NULL;
++  g_autoptr(GFile) file = NULL;
++  g_autofree char *dir = NULL;
++  g_autofree char *dir_display = NULL;
++
++  /* Not a Pi-Desktop image, or a schema from another version: hide the group rather than
++   * abort Settings (g_settings_new / g_settings_get on a missing key is fatal). */
++  if (source != NULL)
++    schema = g_settings_schema_source_lookup (source, SCREENSAVER_SCHEMA, TRUE);
++  for (guint i = 0; schema != NULL && needed_keys[i] != NULL; i++)
++    if (!g_settings_schema_has_key (schema, needed_keys[i]))
++      g_clear_pointer (&schema, g_settings_schema_unref);
++  if (schema != NULL && g_settings_schema_get_path (schema) == NULL)
++    g_clear_pointer (&schema, g_settings_schema_unref);
++  if (schema == NULL)
+     {
+-      /* The handler sets up a GSettings binding */
+-      adw_switch_row_set_active (self->blank_screen_switch_row, TRUE);
++      gtk_widget_set_visible (GTK_WIDGET (self->blank_screen_group), FALSE);
++      return;
+     }
+-  else
+-    {
+-      guint position;
+ 
+-      /* Set the default value on the delay row to show what we'll get if enabled */
+-      if (!cc_number_row_has_value (self->blank_screen_delay_row, BLANK_SCREEN_DEFAULT, &position))
+-        position = cc_number_row_add_value (self->blank_screen_delay_row, BLANK_SCREEN_DEFAULT);
++  self->screensaver_settings = g_settings_new_full (schema, NULL, NULL);
++  self->screensaver_files = g_ptr_array_new_with_free_func (g_free);
+ 
+-      adw_combo_row_set_selected (ADW_COMBO_ROW (self->blank_screen_delay_row), position);
+-    }
++  dir = screensaver_dir ();
++  g_mkdir_with_parents (dir, 0755);
++  dir_display = g_filename_display_name (dir);
++  adw_action_row_set_subtitle (self->screensaver_folder_row, dir_display);
++
++  file = g_file_new_for_path (dir);
++  self->screensaver_monitor = g_file_monitor_directory (file, G_FILE_MONITOR_NONE, NULL, NULL);
++  if (self->screensaver_monitor != NULL)
++    g_signal_connect_object (self->screensaver_monitor, "changed",
++                             G_CALLBACK (screensaver_dir_changed_cb), self, G_CONNECT_SWAPPED);
++  g_signal_connect_object (self->screensaver_settings, "changed::file",
++                           G_CALLBACK (screensaver_setting_changed_cb), self, G_CONNECT_SWAPPED);
++  screensaver_refresh_files (self);
++
++  if (!cc_number_row_has_value (self->screensaver_delay_row, 0, NULL))
++    cc_number_row_add_value_full (self->screensaver_delay_row, 0, _("Never"), CC_NUMBER_ORDER_LAST);
++  cc_number_row_bind_settings (self->screensaver_delay_row, self->screensaver_settings, "delay");
++
++  g_settings_bind (self->screensaver_settings, "lock-on-dismiss",
++                   self->screensaver_lock_row, "active",
++                   G_SETTINGS_BIND_DEFAULT);
+ }
+ 
+ static void
+@@ -857,7 +1027,7 @@
+                    self->dim_screen_row, "active",
+                    G_SETTINGS_BIND_DEFAULT);
+ 
+-  setup_blank_screen_rows (self);
++  setup_screensaver_rows (self);
+ 
+   /* The default values for these settings are unfortunate for us;
+    * timeout == 0, action == suspend means 'do nothing' - just
+@@ -1350,6 +1520,11 @@
+   g_clear_object (&self->gsd_settings);
+   g_clear_object (&self->session_settings);
+   g_clear_object (&self->interface_settings);
++  if (self->screensaver_monitor != NULL)
++    g_file_monitor_cancel (self->screensaver_monitor);
++  g_clear_object (&self->screensaver_monitor);
++  g_clear_object (&self->screensaver_settings);
++  g_clear_pointer (&self->screensaver_files, g_ptr_array_unref);
+   g_clear_pointer (&self->devices, g_ptr_array_unref);
+   g_clear_object (&self->up_client);
+   g_clear_object (&self->iio_proxy);
+@@ -1383,9 +1558,11 @@
+   gtk_widget_class_bind_template_child (widget_class, CcPowerPanel, battery_listbox);
+   gtk_widget_class_bind_template_child (widget_class, CcPowerPanel, battery_percentage_row);
+   gtk_widget_class_bind_template_child (widget_class, CcPowerPanel, battery_section);
+-  gtk_widget_class_bind_template_child (widget_class, CcPowerPanel, blank_screen_delay_row);
+   gtk_widget_class_bind_template_child (widget_class, CcPowerPanel, blank_screen_group);
+-  gtk_widget_class_bind_template_child (widget_class, CcPowerPanel, blank_screen_switch_row);
++  gtk_widget_class_bind_template_child (widget_class, CcPowerPanel, screensaver_file_row);
++  gtk_widget_class_bind_template_child (widget_class, CcPowerPanel, screensaver_delay_row);
++  gtk_widget_class_bind_template_child (widget_class, CcPowerPanel, screensaver_lock_row);
++  gtk_widget_class_bind_template_child (widget_class, CcPowerPanel, screensaver_folder_row);
+   gtk_widget_class_bind_template_child (widget_class, CcPowerPanel, device_listbox);
+   gtk_widget_class_bind_template_child (widget_class, CcPowerPanel, device_section);
+   gtk_widget_class_bind_template_child (widget_class, CcPowerPanel, dim_screen_row);
+@@ -1411,7 +1588,9 @@
+   gtk_widget_class_bind_template_child (widget_class, CcPowerPanel, suspend_notice_group);
+ 
+   gtk_widget_class_bind_template_callback (widget_class, als_row_changed_cb);
+-  gtk_widget_class_bind_template_callback (widget_class, blank_screen_switch_cb);
++  gtk_widget_class_bind_template_callback (widget_class, screensaver_file_cb);
++  gtk_widget_class_bind_template_callback (widget_class, screensaver_open_folder_cb);
++  gtk_widget_class_bind_template_callback (widget_class, screensaver_preview_cb);
+   gtk_widget_class_bind_template_callback (widget_class, battery_health_radio_changed_cb);
+   gtk_widget_class_bind_template_callback (widget_class, cc_util_keynav_propagate_vertical);
+   gtk_widget_class_bind_template_callback (widget_class, power_saving_group_visibility_cb);

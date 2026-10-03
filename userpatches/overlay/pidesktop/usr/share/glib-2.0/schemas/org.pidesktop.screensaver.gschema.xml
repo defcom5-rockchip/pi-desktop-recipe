@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.pidesktop.screensaver" path="/org/pidesktop/screensaver/">
+    <key name="delay" type="u">
+      <default>900</default>
+      <summary>Idle seconds before the screensaver starts (0 = never); set in Settings > Power > Screensaver</summary>
+    </key>
+    <key name="file" type="s">
+      <default>'plaid-penguin-drop.mp4'</default>
+      <summary>File name in ~/Pictures/screensaver to show; empty = slideshow of all files (falls back to a slideshow if the file is missing)</summary>
+    </key>
+    <key name="slide-seconds" type="u">
+      <default>15</default>
+      <summary>Seconds per picture in slideshow mode</summary>
+    </key>
+    <key name="lock-on-dismiss" type="b">
+      <default>true</default>
+      <summary>Lock the session when the screensaver is dismissed</summary>
+    </key>
+  </schema>
+</schemalist>

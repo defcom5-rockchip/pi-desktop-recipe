@@ -1,0 +1,18 @@
+#!/bin/bash
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 defcom5-rockchip — https://github.com/defcom5-rockchip
+# bt-revive v4 (Plaid) — runtime BT firmware reload for AP6275P.
+# v3 drove brcm_patchram_plus directly; on Armbian the firmware load is hciattach inside
+# bluetooth-hciattach.service, whose script already power-cycles, attaches and verifies. So: restart it.
+log(){ echo "[bt-revive] $*"; logger -t bt-revive "$*"; }
+ok(){ local m; m=$(hciconfig hci0 2>/dev/null | awk '/BD Address/{print $3}'); [[ -n $m && $m != "00:00:00:00:00:00" ]]; }
+log "teardown"; hciconfig hci0 down 2>/dev/null
+for attempt in 1 2; do
+	log "attempt $attempt: restart bluetooth-hciattach.service"
+	systemctl restart bluetooth-hciattach.service
+	for i in $(seq 1 20); do sleep 1; ok && break; done
+	ok && break
+	sleep 3
+done
+if ok; then hciconfig hci0 up 2>/dev/null; log "SUCCESS: hci0 $(hciconfig hci0 | awk '/BD Address/{print $3}')"; exit 0
+else log "FAILED — reboot required"; exit 1; fi

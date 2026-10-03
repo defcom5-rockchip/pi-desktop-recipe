@@ -1,0 +1,143 @@
+--- mali-hook.c	2026-09-22 12:13:16.568947205 -0700
++++ hook-build/hook.c	2026-09-22 12:31:23.108451882 -0700
+@@ -1006,6 +1006,114 @@
+    return _eglChooseConfig(dpy, list, configs, config_size, num_config);
+ }
+ 
++
++/*
++ * Pi-Desktop: minimal EGL_EXT_device_query / EGL_EXT_device_drm(_render_node) shim.
++ *
++ * libmali does not implement EGL_EXT_device_query. Firefox's graphics probe
++ * (toolkit/xre/gfxtest/glxtest.cpp, get_egl_gl_status) treats a NULL
++ * eglGetProcAddress("eglQueryDeviceStringEXT") as fatal ("libEGL missing
++ * methods for GL test") and then blocklists every hardware feature (WebRender,
++ * WebGL, DMABUF, VA-API). The browser itself only uses the extension when it
++ * is advertised, so nothing is advertised here: the entry points merely exist
++ * and answer the two questions the probe asks (device extension string and the
++ * DRM render node behind the display). The render node is the Rockchip DRM
++ * one, which is also the device the blob's GBM allocates on.
++ */
++#define PIDESKTOP_MALI_DEVICE ((EGLDeviceEXT)0x4d414c49) /* 'MALI' */
++
++static const char *
++pidesktop_render_node(void)
++{
++   static char node[64];
++   static int probed;
++   char path[128], drv[128];
++   ssize_t n;
++   int i;
++
++   if (probed)
++      return node[0] ? node : NULL;
++   probed = 1;
++
++   if (getenv("MALI_RENDER_NODE")) {
++      snprintf(node, sizeof(node), "%s", getenv("MALI_RENDER_NODE"));
++      return node;
++   }
++
++   /* Prefer the render node whose driver is rockchip-drm (the display/GBM device). */
++   for (i = 128; i < 192; i++) {
++      snprintf(path, sizeof(path), "/sys/class/drm/renderD%d/device/driver", i);
++      n = readlink(path, drv, sizeof(drv) - 1);
++      if (n <= 0)
++         continue;
++      drv[n] = '\0';
++      if (strstr(drv, "rockchip")) {
++         snprintf(node, sizeof(node), "/dev/dri/renderD%d", i);
++         return node;
++      }
++   }
++   /* Fall back to the first render node that exists. */
++   for (i = 128; i < 192; i++) {
++      snprintf(path, sizeof(path), "/dev/dri/renderD%d", i);
++      if (access(path, F_OK) == 0) {
++         snprintf(node, sizeof(node), "%s", path);
++         return node;
++      }
++   }
++   return NULL;
++}
++
++static EGLBoolean EGLAPIENTRY
++pidesktop_eglQueryDevicesEXT(EGLint max_devices, EGLDeviceEXT *devices,
++                             EGLint *num_devices)
++{
++   if (!num_devices)
++      return EGL_FALSE;
++   if (devices && max_devices >= 1)
++      devices[0] = PIDESKTOP_MALI_DEVICE;
++   *num_devices = 1;
++   return EGL_TRUE;
++}
++
++static EGLBoolean EGLAPIENTRY
++pidesktop_eglQueryDisplayAttribEXT(EGLDisplay dpy, EGLint attribute,
++                                   EGLAttrib *value)
++{
++   (void)dpy;
++   if (attribute == EGL_DEVICE_EXT && value) {
++      *value = (EGLAttrib)PIDESKTOP_MALI_DEVICE;
++      return EGL_TRUE;
++   }
++   return EGL_FALSE;
++}
++
++static EGLBoolean EGLAPIENTRY
++pidesktop_eglQueryDeviceAttribEXT(EGLDeviceEXT device, EGLint attribute,
++                                  EGLAttrib *value)
++{
++   (void)device; (void)attribute; (void)value;
++   return EGL_FALSE;
++}
++
++static const char * EGLAPIENTRY
++pidesktop_eglQueryDeviceStringEXT(EGLDeviceEXT device, EGLint name)
++{
++   if (device != PIDESKTOP_MALI_DEVICE)
++      return NULL;
++
++   switch (name) {
++   case EGL_EXTENSIONS:
++      return "EGL_EXT_device_drm EGL_EXT_device_drm_render_node";
++   case EGL_DRM_RENDER_NODE_FILE_EXT:
++      return pidesktop_render_node();
++   case EGL_DRM_DEVICE_FILE_EXT:
++      /* No primary-node claim: let callers use the render node. */
++      return NULL;
++   default:
++      return NULL;
++   }
++}
++
+ /* Override proc addesses */
+ 
+ EGLAPI __eglMustCastToProperFunctionPointerType EGLAPIENTRY
+@@ -1054,6 +1162,25 @@
+    if (!strcmp(procname, "eglDestroySurface"))
+       return (__eglMustCastToProperFunctionPointerType)eglDestroySurface;
+ 
++   /* Pi-Desktop: EGL_EXT_device_query shim (see above). Blob first, shim second. */
++   if (!strcmp(procname, "eglQueryDevicesEXT") ||
++       !strcmp(procname, "eglQueryDisplayAttribEXT") ||
++       !strcmp(procname, "eglQueryDeviceAttribEXT") ||
++       !strcmp(procname, "eglQueryDeviceStringEXT")) {
++      __eglMustCastToProperFunctionPointerType real = _eglGetProcAddress(procname);
++      if (real)
++         return real;
++      if (getenv("MALI_NO_DEVICE_QUERY_SHIM"))
++         return NULL;
++      if (!strcmp(procname, "eglQueryDevicesEXT"))
++         return (__eglMustCastToProperFunctionPointerType)pidesktop_eglQueryDevicesEXT;
++      if (!strcmp(procname, "eglQueryDisplayAttribEXT"))
++         return (__eglMustCastToProperFunctionPointerType)pidesktop_eglQueryDisplayAttribEXT;
++      if (!strcmp(procname, "eglQueryDeviceAttribEXT"))
++         return (__eglMustCastToProperFunctionPointerType)pidesktop_eglQueryDeviceAttribEXT;
++      return (__eglMustCastToProperFunctionPointerType)pidesktop_eglQueryDeviceStringEXT;
++   }
++
+    return _eglGetProcAddress(procname);
+ }
+ 

@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="256" height="256">
+  <!-- Operation Facehugger — cartoon launcher icon -->
+  <circle cx="100" cy="100" r="96" fill="#17110d"/>
+  <circle cx="100" cy="100" r="96" fill="none" stroke="#e85020" stroke-width="5"/>
+
+  <!-- TAIL (behind body) -->
+  <g fill="none" stroke-linecap="round">
+    <path d="M100,140 C101,163 124,167 121,181 C119,192 105,193 103,183 C102,177 110,175 112,179"
+          stroke="#5f4f36" stroke-width="13"/>
+    <path d="M100,140 C101,163 124,167 121,181 C119,192 105,193 103,183 C102,177 110,175 112,179"
+          stroke="#cdb891" stroke-width="8"/>
+  </g>
+
+  <!-- LEGS (8, behind body) -->
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <g stroke="#5f4f36" stroke-width="11">
+      <path d="M80,90 C58,84 38,82 20,64"/>
+      <path d="M84,86 C64,72 44,46 34,28"/>
+      <path d="M91,83 C82,60 70,34 64,14"/>
+      <path d="M97,82 C93,58 88,32 90,11"/>
+      <path d="M103,82 C107,58 112,32 110,11"/>
+      <path d="M109,83 C118,60 130,34 136,14"/>
+      <path d="M116,86 C136,72 156,46 166,28"/>
+      <path d="M120,90 C142,84 162,82 180,64"/>
+    </g>
+    <g stroke="#cdb891" stroke-width="7">
+      <path d="M80,90 C58,84 38,82 20,64"/>
+      <path d="M84,86 C64,72 44,46 34,28"/>
+      <path d="M91,83 C82,60 70,34 64,14"/>
+      <path d="M97,82 C93,58 88,32 90,11"/>
+      <path d="M103,82 C107,58 112,32 110,11"/>
+      <path d="M109,83 C118,60 130,34 136,14"/>
+      <path d="M116,86 C136,72 156,46 166,28"/>
+      <path d="M120,90 C142,84 162,82 180,64"/>
+    </g>
+  </g>
+
+  <!-- BODY (two lobes) -->
+  <g stroke="#5f4f36" stroke-width="3">
+    <ellipse cx="87" cy="108" rx="31" ry="27" fill="#cdb891"/>
+    <ellipse cx="113" cy="108" rx="31" ry="27" fill="#cdb891"/>
+    <ellipse cx="100" cy="104" rx="30" ry="26" fill="#d8c49f" stroke="none"/>
+  </g>
+
+  <!-- CENTRAL DETAIL -->
+  <ellipse cx="100" cy="106" rx="13" ry="18" fill="#7c2b2b"/>
+  <ellipse cx="100" cy="106" rx="6.5" ry="13" fill="#a83f3a"/>
+  <line x1="100" y1="92" x2="100" y2="120" stroke="#5a1e1e" stroke-width="2"/>
+
+  <!-- little eye highlights for cartoon charm -->
+  <circle cx="80" cy="102" r="3.4" fill="#2b2016"/>
+  <circle cx="120" cy="102" r="3.4" fill="#2b2016"/>
+</svg>

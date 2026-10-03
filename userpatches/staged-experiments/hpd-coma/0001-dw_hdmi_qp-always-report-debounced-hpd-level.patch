@@ -1,0 +1,118 @@
+From: defcom5-rockchip <286489597+defcom5-rockchip@users.noreply.github.com>
+Subject: [PATCH] drm/rockchip: dw_hdmi_qp: always hand the debounced HPD level to the bridge
+
+Base: rk-6.1-rkr7.2 (6.1.172), worktree HEAD c0600eeee5f9
+Status: compile-tested only (arm64 cross, drivers/gpu/drm/bridge/synopsys/dw-hdmi-qp.o
+        and drivers/gpu/drm/rockchip/dw_hdmi_qp-rockchip.o); NOT runtime-tested.
+
+Symptom ("the coma"): after a power-cycle the board comes up at 3840x2160@60 on
+HDMI0, GDM runs, the connector is connected/enabled/DPMS On and
+/sys/kernel/debug/dri/0/state shows the mode active, but
+/sys/kernel/debug/dri/0/hdmi0/status says only "PHY: disabled" and the monitor
+stays black. A VT switch does not help and logs nothing. Only a reboot (or any
+real modeset) restores the picture. Same family as ubuntu-rockchip issue #956.
+
+Mechanism: the vendor bridge keeps the VOP running across a sink HPD drop and
+only powers the HDMI PHY down (dw_hdmi_qp_handle_hpd(false):
+hdmi->disabled = true, phy off) expecting the following HPD high to power it
+back up (dw_hdmi_qp_handle_hpd(true)). The platform glue, however, only calls
+dw_hdmi_qp_handle_hpd() when drm_helper_hpd_irq_event() returned "changed", and
+that helper reports a change only when *its own* detect() moved
+connector->status (check_connector_changed(): epoch_counter compare). Any other
+detect() that ran between the HPD edge and the (20/150 ms debounced) hpd_work -
+userspace GETCONNECTOR answering the previous hotplug uevent, the fbdev client's
+fill_modes(), a poll - already updated connector->status and consumed the edge.
+The glue then sees change == false, never calls dw_hdmi_qp_handle_hpd(true),
+and the encoder stays enabled with the PHY off. Userspace sees the same
+connector and mode, so no commit produces a modeset; the connector
+atomic_check also declines to force one while hdmi->disabled is set.
+
+Fix: report the debounced HPD level to the bridge unconditionally.
+dw_hdmi_qp_handle_hpd() is idempotent for a repeated level (it acts only on
+!disabled for low and only on disabled for high), and so is
+dw_hdmi_qp_cec_set_hpd(). To keep behaviour unchanged for outputs whose
+detect() does not follow the HPD pin (forced kernel output, fixed panel,
+downstream bridge with its own detection) - those never reached
+dw_hdmi_qp_handle_hpd() before because their status never changed - skip the
+function for them. Two dev_info() lines make the power-off/power-on path
+visible in dmesg, which it was not.
+
+The HDMI 2.1 FRL (> 600 MHz TMDS-equivalent) early return is untouched: this
+patch does not affect 4K@120.
+
+An LLM assistant (Claude, Anthropic) did the code reading and drafted this
+patch and its description; the human maintainer reviews and tests.
+---
+diff --git a/drivers/gpu/drm/bridge/synopsys/dw-hdmi-qp.c b/drivers/gpu/drm/bridge/synopsys/dw-hdmi-qp.c
+index ae1f61be10db..3604e4a581ce 100644
+--- a/drivers/gpu/drm/bridge/synopsys/dw-hdmi-qp.c
++++ b/drivers/gpu/drm/bridge/synopsys/dw-hdmi-qp.c
+@@ -3264,11 +3264,24 @@ void dw_hdmi_qp_handle_hpd(struct dw_hdmi_qp *hdmi, bool enable)
+ 	if (hdmi->hdmi_data.video_mode.mtmdsclock > 600000000)
+ 		goto out;
+ 
++	/*
++	 * The platform glue now reports every debounced HPD level, not only
++	 * the ones drm_helper_hpd_irq_event() saw as a connector status
++	 * change. Outputs whose detect() does not follow the HPD pin (forced
++	 * kernel output, a fixed panel, a downstream bridge with its own
++	 * detection) never reached this function before, because their
++	 * connector status never changed; keep it that way.
++	 */
++	if (hdmi->force_kernel_output || hdmi->panel ||
++	    (hdmi->next_bridge && (hdmi->next_bridge->ops & DRM_BRIDGE_OP_DETECT)))
++		goto out;
++
+ 	mutex_lock(&hdmi->audio_mutex);
+ 	if (!hdmi->dclk_en)
+ 		goto err_dclk;
+ 
+ 	if (!enable && !hdmi->disabled) {
++		dev_info(hdmi->dev, "hpd low: powering hdmi phy off, vop output kept\n");
+ 		hdmi_writel(hdmi, 1, PKTSCHED_PKT_CONTROL0);
+ 		hdmi_modb(hdmi, PKTSCHED_GCP_TX_EN, PKTSCHED_GCP_TX_EN, PKTSCHED_PKT_EN);
+ 		msleep(50);
+@@ -3281,6 +3294,7 @@ void dw_hdmi_qp_handle_hpd(struct dw_hdmi_qp *hdmi, bool enable)
+ 		is_hdmi14 = true;
+ 
+ 	if (enable && hdmi->disabled) {
++		dev_info(hdmi->dev, "hpd high: powering hdmi phy back on\n");
+ 		if (!is_hdmi14) {
+ 			drm_scdc_set_high_tmds_clock_ratio(hdmi->ddc, 1);
+ 			drm_scdc_set_scrambling(hdmi->ddc, 1);
+diff --git a/drivers/gpu/drm/rockchip/dw_hdmi_qp-rockchip.c b/drivers/gpu/drm/rockchip/dw_hdmi_qp-rockchip.c
+index 4f8f012d2f7f..fa71e8e6e4f1 100644
+--- a/drivers/gpu/drm/rockchip/dw_hdmi_qp-rockchip.c
++++ b/drivers/gpu/drm/rockchip/dw_hdmi_qp-rockchip.c
+@@ -1041,11 +1041,27 @@ static void repo_hpd_event(struct work_struct *p_work)
+ 	bool change;
+ 
+ 	change = drm_helper_hpd_irq_event(hdmi->drm_dev);
+-	if (change) {
++	if (change)
+ 		dev_dbg(hdmi->dev, "hpd stat changed:%d\n", hdmi->hpd_stat);
+-		dw_hdmi_qp_handle_hpd(hdmi->hdmi_qp, hdmi->hpd_stat);
+-		dw_hdmi_qp_cec_set_hpd(hdmi->hdmi_qp, hdmi->hpd_stat, change);
+-	}
++
++	/*
++	 * drm_helper_hpd_irq_event() reports a change only when *its own*
++	 * detect() moved connector->status. Any other probe of the connector
++	 * that ran between the HPD edge and this (debounced) work - userspace
++	 * GETCONNECTOR answering the previous hotplug uevent, the fbdev client,
++	 * a poll - already updated connector->status and consumed the edge, so
++	 * @change is false here although the sink did toggle HPD.
++	 *
++	 * dw_hdmi_qp_handle_hpd() powers the PHY down on HPD low while the CRTC
++	 * keeps running and relies on seeing the following HPD high to power it
++	 * back up. If that edge is swallowed, the encoder stays enabled with the
++	 * PHY off (debugfs hdmiN/status: "PHY: disabled", black screen) and,
++	 * because userspace sees the same connector and mode, nothing short of
++	 * a full modeset ever re-enables it. Both helpers are idempotent for a
++	 * repeated level, so always hand them the current level.
++	 */
++	dw_hdmi_qp_handle_hpd(hdmi->hdmi_qp, hdmi->hpd_stat);
++	dw_hdmi_qp_cec_set_hpd(hdmi->hdmi_qp, hdmi->hpd_stat, change);
+ }
+ 
+ static irqreturn_t rk3538_hdmi_hardirq(int irq, void *dev_id)

@@ -1,0 +1,16 @@
+[Unit]
+Description=Pi-Desktop: enable the ES8388 headphone output driver (OUT1)
+# Rockchip's vendor es8323 codec driver (bound to the Orange Pi 5/5B ES8388) routes the 3.5 mm jack
+# LOUT1/ROUT1 through a software DAPM switch, "OUT1 Switch", that defaults to off. PipeWire's generic
+# path (no UCM profile for rockchip-es8388) never touches it, so the jack is silent on a fresh image.
+# Runs after alsa-restore so a stored mixer state cannot switch it back off.
+ConditionPathExists=/proc/asound/rockchipes8388
+After=alsa-restore.service alsa-state.service sound.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/amixer -q -c rockchipes8388 cset "name=OUT1 Switch" on
+RemainAfterExit=yes
+
+[Install]
+WantedBy=sound.target

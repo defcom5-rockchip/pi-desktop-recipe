@@ -1,0 +1,59 @@
+From 553d48abc89d17f5087f4297877604aadf5562c2 Mon Sep 17 00:00:00 2001
+From: defcom5-rockchip <286489597+defcom5-rockchip@users.noreply.github.com>
+Date: Wed, 23 Sep 2026 16:54:21 -0700
+Subject: [PATCH] net: wireless: bcmdhd: handle NL80211_WPA_VERSION_3 in
+ wl_set_wpa_version()
+
+wpa_supplicant 2.11 signals WPA3-Personal (SAE) to the driver with
+NL80211_WPA_VERSION_3 only; 2.10 used NL80211_WPA_VERSION_2 for the same
+connection. wl_set_wpa_version() knows VERSION_1 and VERSION_2 and falls
+through to WPA_AUTH_DISABLED for anything else, so with 2.11 the firmware
+performs an open association carrying an SAE RSN IE and the AP
+deauthenticates it with reason 13 (invalid IE). With SAE selected as the
+preferred AKM on a WPA2/WPA3 transition SSID this makes such networks
+unjoinable; NetworkManager 1.54 always offers SAE, so on Ubuntu 26.04 the
+AP6275P (BCM43752, Orange Pi 5B) could not join a mixed-mode network at
+all.
+
+Treat VERSION_3 like VERSION_2: wl_set_key_mgmt() then refines wpa_auth
+from the AKM suite (SAE -> WPA3_AUTH_SAE_PSK) exactly as it did with 2.10.
+This mirrors brcmf_set_wpa_version() in the upstream brcmfmac driver.
+
+Tested on Orange Pi 5B (AP6275P, fw 18.35.387.23.146) against a UniFi
+WPA2/WPA3 SSID with PMF optional on 2.4 GHz: wpa_supplicant 2.10 joins
+(SAE, PMF), 2.11 is deauthenticated with reason 13 on every attempt;
+nl80211 debug shows the only relevant difference is WPA Versions 0x2 vs
+0x4 in the connect request.
+
+Root cause and fix were worked out with the help of an LLM assistant
+(Claude); the analysis and the hardware test are the submitter's.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ .../wireless/rockchip_wlan/rkwifi/bcmdhd/wl_cfg80211.c | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/drivers/net/wireless/rockchip_wlan/rkwifi/bcmdhd/wl_cfg80211.c b/drivers/net/wireless/rockchip_wlan/rkwifi/bcmdhd/wl_cfg80211.c
+index 262fe27dbb06..af3f47c67325 100755
+--- a/drivers/net/wireless/rockchip_wlan/rkwifi/bcmdhd/wl_cfg80211.c
++++ b/drivers/net/wireless/rockchip_wlan/rkwifi/bcmdhd/wl_cfg80211.c
+@@ -4938,6 +4938,16 @@ wl_set_wpa_version(struct net_device *dev, struct cfg80211_connect_params *sme)
+ 	else if (sme->crypto.wpa_versions & NL80211_WPA_VERSION_2)
+ 		val = WPA2_AUTH_PSK|
+ 			WPA2_AUTH_UNSPECIFIED;
++	else if (sme->crypto.wpa_versions & NL80211_WPA_VERSION_3)
++		/* WPA3 (SAE/OWE): wpa_supplicant >= 2.11 signals it with
++		 * NL80211_WPA_VERSION_3 alone, where 2.10 sent VERSION_2.
++		 * Start from the WPA2 set so wl_set_key_mgmt() refines it from
++		 * the AKM (SAE -> WPA3_AUTH_SAE_PSK) exactly as before; the old
++		 * fall-through to WPA_AUTH_DISABLED made the firmware join open
++		 * with an SAE RSN IE and the AP deauthenticated with reason 13.
++		 */
++		val = WPA2_AUTH_PSK|
++			WPA2_AUTH_UNSPECIFIED;
+ 	else
+ 		val = WPA_AUTH_DISABLED;
+ 
+-- 
+2.53.0
+

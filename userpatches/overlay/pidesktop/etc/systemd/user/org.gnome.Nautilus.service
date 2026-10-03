@@ -1,0 +1,12 @@
+# Pi-Desktop: run Files (Nautilus) in its own cgroup. Upstream ships only a D-Bus service file with no SystemdService=,
+# so the session bus spawns Nautilus inside dbus.service. A big copy's page cache is then charged to the session bus,
+# and systemd-oomd kills dbus.service under memory pressure, taking the whole GNOME session with it (seen on Plaid
+# 2026-09-26; systemd#35270, Ubuntu LP#2075104). As its own unit, oomd can only ever stop Files, not the session.
+[Unit]
+Description=Files (Nautilus), D-Bus activated in its own cgroup
+
+[Service]
+Type=dbus
+BusName=org.gnome.Nautilus
+ExecStart=/usr/bin/nautilus --gapplication-service
+Slice=app.slice

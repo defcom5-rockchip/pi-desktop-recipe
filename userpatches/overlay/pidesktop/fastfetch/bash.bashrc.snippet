@@ -1,0 +1,7 @@
+
+# Pi Desktop: fastfetch on interactive shells (once per terminal, not in nested shells);
+# strip the harmless Mali userspace banner.
+if [ -n "$PS1" ] && [ -z "$PI_DESKTOP_FETCHED" ] && [ -t 1 ] && command -v fastfetch >/dev/null 2>&1; then
+    export PI_DESKTOP_FETCHED=1
+    fastfetch 2>/dev/null | grep -v 'arm_release_ver:'
+fi

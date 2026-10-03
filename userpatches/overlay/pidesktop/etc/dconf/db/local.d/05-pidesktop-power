@@ -1,0 +1,15 @@
+# Pi-Desktop: never auto-suspend (RK3588 vendor-kernel suspend/resume not validated on Plaid; 2.0.x did the same).
+[org/gnome/settings-daemon/plugins/power]
+sleep-inactive-ac-type='nothing'
+sleep-inactive-battery-type='nothing'
+
+# GNOME's screen blank is OFF and locked (locks/pidesktop-power): 2.0.x fenced the Riek-era wake coma, and on Plaid
+# a blank at 4K@120 Hz hard-hangs the board. Settings > Power shows a "Screensaver" group instead (patched
+# gnome-control-center); its delay is the service's own setting (org.pidesktop.screensaver delay, default 15 min).
+[org/gnome/desktop/session]
+idle-delay=uint32 0
+
+# Lock on demand (Super+L) and when the screensaver ends (Power > Screensaver > "Ask for Password Afterwards").
+[org/gnome/desktop/screensaver]
+lock-enabled=true
+lock-delay=uint32 0

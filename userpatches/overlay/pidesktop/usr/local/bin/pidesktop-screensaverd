@@ -1,0 +1,406 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 defcom5-rockchip (Pi-Desktop). See LICENSE in the recipe repository.
+# pidesktop-screensaverd — Pi-Desktop screensaver service (per user, systemd --user).
+#
+# Screen blanking is disabled on Pi-Desktop: the display does not come back after a blank at 4K@120 Hz
+# (the board hard-hangs on the monitor's standby hotplug). This service replaces it:
+#  * GNOME's own screen blank is locked off (idle-delay 0); this service watches the session's idle time
+#    through GNOME's idle monitor and, after the delay set in Settings > Power > Screensaver (GSettings
+#    org.pidesktop.screensaver delay), shows a picture, slideshow or video from ~/Pictures/screensaver
+#    with mpv, fullscreen and silent;
+#  * while the screensaver shows, and for as long as the session is locked, it holds an idle inhibitor with
+#    gnome-session: GNOME's power manager would otherwise still blank a LOCKED screen 15 s after idle. The
+#    inhibitor is never held permanently: gnome-shell passes idle inhibitors to mutter, which stops firing
+#    idle watches while one is held (so a playing video, with its own inhibitor, keeps the screensaver away);
+#  * any mouse or keyboard input ends it, optionally locking the session.
+# All settings live in org.pidesktop.screensaver (edited from the patched Power panel); changes apply live.
+# SIGUSR1 = start now (preview).
+import os
+import pathlib
+import signal
+import subprocess
+import sys
+import time
+
+import gi
+
+gi.require_version('Gio', '2.0')
+gi.require_version('GLib', '2.0')
+from gi.repository import Gio, GLib  # noqa: E402
+
+SCHEMA = 'org.pidesktop.screensaver'
+APP_ID = 'org.pidesktop.Screensaver'
+SAVER_DIR = pathlib.Path.home() / 'Pictures' / 'screensaver'
+DEFAULTS = [   # shipped content, linked into the folder when it is empty (video first = the default choice)
+    (pathlib.Path('/usr/share/pi-desktop/screensaver/plaid-penguin-drop.mp4'), 'plaid-penguin-drop.mp4'),
+    (pathlib.Path('/usr/share/backgrounds/pi-desktop/penguin-drop-plaid-v2-3840x2160.png'), 'plaid-penguins.png'),
+]
+EXTS = {'.png', '.jpg', '.jpeg', '.webp', '.avif', '.gif', '.mp4', '.mkv', '.webm', '.mov', '.m4v'}
+INHIBIT_IDLE = 8            # org.gnome.SessionManager inhibit flag: "idle"
+LOCK_GRACE = 30             # s a requested lock may take to engage before we stop waiting for it
+RECONCILE_EVERY = 10        # s between self-checks of the inhibitor against the real state
+CRASH_RESTART_DELAY = 2     # s before restarting a screensaver whose mpv died on its own while the user is still away
+CRASH_LIMIT = 3             # ... but give up after this many unexpected exits within CRASH_WINDOW s (broken file/driver)
+CRASH_WINDOW = 600
+FIRST_RUN_MARK = pathlib.Path(GLib.get_user_config_dir()) / 'pidesktop-screensaver' / 'first-run-shown'
+
+
+def log(msg):
+    print(msg, flush=True)
+
+
+def saver_files():
+    if not SAVER_DIR.is_dir():
+        return []
+    return sorted(p for p in SAVER_DIR.iterdir() if p.suffix.lower() in EXTS and not p.name.startswith('.'))
+
+
+def ensure_default_content():
+    """Make sure the folder exists and holds at least the Plaid wallpaper, so the app's list is never empty."""
+    try:
+        SAVER_DIR.mkdir(parents=True, exist_ok=True)
+        if not saver_files():
+            for src, name in DEFAULTS:
+                if src.exists() and not (SAVER_DIR / name).exists():
+                    (SAVER_DIR / name).symlink_to(src)
+                    log(f'added default screensaver {name}')
+    except OSError as e:
+        log(f'cannot prepare {SAVER_DIR}: {e}')
+
+
+class Daemon:
+    def __init__(self, loop):
+        self.loop = loop
+        self.settings = Gio.Settings.new(SCHEMA)
+        self.bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        self.idle = self.session = self.shield = None
+        self.idle_watch = 0
+        self.active_watch = 0
+        self.player = None
+        self.preview = False
+        self.ending = False              # we asked mpv to stop (dismiss/quit); any other exit is unexpected
+        self.crashes = []                # monotonic times of unexpected mpv exits (crash-loop guard)
+        self.inhibit_cookie = 0
+        self.lock_requested = False      # we asked GNOME to lock: keep the inhibitor until the unlock
+        self.lock_requested_at = 0.0     # monotonic time of that request (bounds how long we wait for it)
+        ensure_default_content()
+        self.settings.connect('changed', lambda *_: self.arm())
+        GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGUSR1, self.on_preview)
+        for s in (signal.SIGTERM, signal.SIGINT):
+            GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, s, self.quit)
+        self.connect_attempts = 0
+        GLib.timeout_add(500, self.try_connect)
+
+    # -- GNOME session interfaces -----------------------------------------------------------------
+    def proxy(self, name, path, iface):
+        p = Gio.DBusProxy.new_sync(self.bus, Gio.DBusProxyFlags.DO_NOT_AUTO_START, None, name, path, iface, None)
+        return p if p.get_name_owner() else None
+
+    def try_connect(self):
+        self.connect_attempts += 1
+        try:
+            self.idle = self.proxy('org.gnome.Mutter.IdleMonitor', '/org/gnome/Mutter/IdleMonitor/Core',
+                                   'org.gnome.Mutter.IdleMonitor')
+            self.session = self.proxy('org.gnome.SessionManager', '/org/gnome/SessionManager',
+                                      'org.gnome.SessionManager')
+            self.shield = self.proxy('org.gnome.ScreenSaver', '/org/gnome/ScreenSaver', 'org.gnome.ScreenSaver')
+        except GLib.Error as e:
+            log(f'D-Bus error while connecting: {e}')
+        if not (self.idle and self.session):
+            if self.connect_attempts > 120:        # 60 s: not a GNOME session
+                log('GNOME idle monitor not available — exiting')
+                self.loop.quit()
+                return False
+            return True                              # retry
+        self.idle.connect('g-signal', self.on_idle_signal)
+        self.session.connect('g-signal', self.on_session_signal)
+        if self.shield:
+            self.shield.connect('g-signal', self.on_shield_signal)
+        log('connected to GNOME idle monitor')
+        self.reconcile('connect')
+        GLib.timeout_add_seconds(RECONCILE_EVERY, self.on_reconcile_timer)
+        self.arm()
+        self.first_run_notice()
+        return False
+
+    def on_idle_signal(self, _proxy, _sender, name, params):
+        if name != 'WatchFired':
+            return
+        (wid,) = params.unpack()
+        if wid == self.idle_watch:
+            self.maybe_start()
+        elif wid == self.active_watch:
+            self.active_watch = 0
+            self.dismiss()
+
+    def on_session_signal(self, _proxy, _sender, name, _params):
+        # A movie ended (its idle inhibitor went away) while the user was already idle: the idle watch
+        # will not fire again until the next activity, so check the idle time ourselves.
+        if name == 'InhibitorRemoved' and not self.player:
+            delay = self.delay()
+            if delay and self.idle.GetIdletime() >= delay * 1000:
+                self.maybe_start()
+
+    def delay(self):
+        """Seconds of idle before the screensaver (Settings > Power > Screensaver > Start After; 0 = never)."""
+        return self.settings.get_uint('delay')
+
+    # -- the idle inhibitor: held while the screensaver shows and while the session is locked. GNOME's power
+    # manager honours it (cancels its blank; would otherwise also blank a LOCKED screen 15 s after idle,
+    # gsd-power SCREENSAVER_TIMEOUT_BLANK). Never permanent: mutter stops firing idle watches while held.
+    # Whether it is held is DERIVED from the real state by reconcile(), never from event bookkeeping alone:
+    # a missed or reordered ActiveChanged / player-exit left it held after an unlock (2026-09-26), and then
+    # the screensaver never started again.
+    def on_shield_signal(self, _proxy, _sender, name, params):
+        if name != 'ActiveChanged':
+            return
+        (active,) = params.unpack()
+        log(f'session {"locked" if active else "unlocked"}')
+        if not active:
+            self.lock_requested = False
+        self.reconcile('lock' if active else 'unlock')
+
+    def reconcile(self, why):
+        """Hold the inhibitor exactly while the screensaver shows, the session is locked, or a lock we
+        requested is still engaging (at most LOCK_GRACE s)."""
+        locked = self.locked()
+        if self.lock_requested and not locked and time.monotonic() - self.lock_requested_at > LOCK_GRACE:
+            log(f'lock requested {LOCK_GRACE} s ago but the session is not locked — no longer waiting for it')
+            self.lock_requested = False
+        if self.player or locked or self.lock_requested:
+            self.take_inhibit()
+        elif self.inhibit_cookie:
+            log(f'nothing needs the inhibitor ({why})')
+            self.release_inhibit()
+
+    def on_reconcile_timer(self):
+        self.reconcile('self-check')
+        return True
+
+    def take_inhibit(self):
+        if self.inhibit_cookie:
+            return
+        try:
+            self.inhibit_cookie = self.session.Inhibit('(susu)', APP_ID, 0,
+                                                       'Screen blanking is off on Pi-Desktop: the display cannot '
+                                                       'resume at 4K@120 Hz; a screensaver runs instead', INHIBIT_IDLE)
+            log(f'holding idle inhibitor {self.inhibit_cookie} (GNOME will not blank)')
+        except GLib.Error as e:
+            log(f'inhibit failed: {e}')
+
+    def release_inhibit(self):
+        if not self.inhibit_cookie:
+            return
+        try:
+            self.session.Uninhibit('(u)', self.inhibit_cookie)
+        except GLib.Error:
+            pass
+        log('inhibitor released')
+        self.inhibit_cookie = 0
+
+    def inhibited_by_others(self):
+        """True if some other application (a playing video, a presentation) inhibits idle right now."""
+        try:
+            (paths,) = self.session.call_sync('GetInhibitors', None, Gio.DBusCallFlags.NONE, -1, None).unpack()
+            for path in paths:
+                inh = Gio.DBusProxy.new_sync(self.bus, Gio.DBusProxyFlags.DO_NOT_AUTO_START, None,
+                                             'org.gnome.SessionManager', path, 'org.gnome.SessionManager.Inhibitor', None)
+                if inh.GetAppId() == APP_ID:
+                    continue
+                if inh.GetFlags() & INHIBIT_IDLE:
+                    return True
+        except GLib.Error:
+            return False
+        return False
+
+    # -- arming -------------------------------------------------------------------------------------
+    def arm(self):
+        if not self.idle:
+            return
+        if self.idle_watch:
+            try:
+                self.idle.RemoveWatch('(u)', self.idle_watch)
+            except GLib.Error:
+                pass
+            self.idle_watch = 0
+        delay = self.delay()
+        if delay:
+            self.idle_watch = self.idle.AddIdleWatch('(t)', delay * 1000)
+            log(f'armed: screensaver after {delay} s idle')
+        else:
+            log('armed: never (Start After = Never)')
+
+    def inhibited(self):
+        return self.inhibited_by_others()
+
+    def locked(self):
+        try:
+            return bool(self.shield and self.shield.GetActive())
+        except GLib.Error:
+            return False
+
+    def maybe_start(self):
+        if self.player:
+            return
+        if self.inhibited():
+            log('idle, but an application inhibits idle (video playing?) — not starting')
+            return
+        if self.locked():
+            log('idle, but the session is locked — not starting')
+            return
+        self.start(preview=False)
+
+    def on_preview(self):
+        if self.player:
+            self.preview = True          # switching to a preview is not "the user came back": never lock here
+            self.dismiss()
+            GLib.timeout_add(500, lambda: self.start(preview=True) or False)   # after mpv has gone
+        else:
+            self.start(preview=True)
+        return True
+
+    # -- player -------------------------------------------------------------------------------------
+    def playlist(self):
+        files = saver_files()
+        if not files:
+            ensure_default_content()
+            files = saver_files()
+        chosen = self.settings.get_string('file')
+        if chosen:
+            hit = [p for p in files if p.name == chosen]
+            if hit:
+                return hit
+            log(f'{chosen!r} is gone — falling back to a slideshow of the folder')
+        return files
+
+    def start(self, preview):
+        files = self.playlist()
+        if not files:
+            log(f'nothing to show: {SAVER_DIR} is empty')
+            return
+        slide = self.settings.get_uint('slide-seconds') or 15  # noqa: E501
+        duration = str(slide) if len(files) > 1 else 'inf'
+        cmd = ['mpv', '--no-terminal', '--really-quiet', '--force-window=yes', '--fs',
+               '--osc=no', '--osd-bar=no', '--osd-level=0', '--input-default-bindings=no',
+               '--input-vo-keyboard=no', '--input-cursor=no', '--cursor-autohide=always',
+               '--stop-screensaver=no', '--audio=no', '--ytdl=no', '--resume-playback=no',
+               '--loop-playlist=inf', f'--image-display-duration={duration}',
+               # the global mpv.conf has video-sync=display-resample: at 4K@120 Hz that re-renders every vsync
+               # (measured on a DVD: GPU 93 % vs 43 %), hours on end for a screensaver. Pace by the clock instead.
+               '--video-sync=audio',
+               '--wayland-app-id=pidesktop-screensaver', '--title=Pi-Desktop Screensaver',
+               *map(str, files)]
+        try:
+            # mpv is --really-quiet, but the Rockchip decoder library still chats on stderr; keep the journal clean
+            self.player = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                           stderr=subprocess.DEVNULL)
+        except OSError as e:
+            log(f'cannot start mpv: {e}')
+            self.player = None
+            return
+        self.preview = preview
+        self.take_inhibit()                      # covers the lock that may follow (GNOME blanks locked screens)
+        GLib.child_watch_add(GLib.PRIORITY_DEFAULT, self.player.pid, self.on_player_exit)
+        log(f'screensaver started ({"preview, " if preview else ""}{len(files)} file(s), pid {self.player.pid})')
+        # A preview is triggered by a click, so give the user a moment to let go of the mouse.
+        GLib.timeout_add(1500 if preview else 0, self.add_active_watch)
+
+    def add_active_watch(self):
+        if self.player and not self.active_watch:
+            self.active_watch = self.idle.AddUserActiveWatch()
+        return False
+
+    def on_player_exit(self, _pid, status):
+        # the single cleanup path: runs when mpv ends, whether we terminated it or it ended on its own
+        self.player = None
+        self.remove_active_watch()
+        expected, self.ending = self.ending, False
+        log(f'screensaver ended (status {status}{"" if expected else ", UNEXPECTED — mpv died on its own"})')
+        self.reconcile('player exit')
+        if not expected:
+            self.restart_after_crash()
+
+    def restart_after_crash(self):
+        """mpv crashed while the user was away (seen: SIGSEGV/SIGABRT after ~9 h of 4K looping). Without this the
+        desktop stays visible until the NEXT full idle period, because mutter's idle watch has already fired."""
+        now = time.monotonic()
+        self.crashes = [t for t in self.crashes if now - t < CRASH_WINDOW] + [now]
+        if len(self.crashes) > CRASH_LIMIT:
+            log(f'{len(self.crashes)} unexpected exits in {CRASH_WINDOW} s — not restarting until the next idle period')
+            return
+        GLib.timeout_add_seconds(CRASH_RESTART_DELAY, self.restart_if_still_idle)
+
+    def restart_if_still_idle(self):
+        delay = self.delay()
+        try:
+            idle_ms = self.idle.GetIdletime()
+        except GLib.Error:
+            return False
+        if delay and idle_ms >= delay * 1000:
+            log('restarting the screensaver after an unexpected exit')
+            self.maybe_start()           # still checks: already running / other inhibitors / locked
+        return False
+
+    def remove_active_watch(self):
+        if self.active_watch:
+            try:
+                self.idle.RemoveWatch('(u)', self.active_watch)
+            except GLib.Error:
+                pass
+            self.active_watch = 0
+
+    def dismiss(self):
+        if not self.player:
+            return
+        self.remove_active_watch()
+        lock = not self.preview and self.settings.get_boolean('lock-on-dismiss') and self.shield
+        log('input — ending screensaver' + (' and locking' if lock else ''))
+        if lock:
+            self.lock_requested = True       # decided BEFORE mpv exits, so on_player_exit keeps the inhibitor
+            self.lock_requested_at = time.monotonic()
+            try:
+                self.shield.Lock()
+            except GLib.Error as e:
+                log(f'lock failed: {e}')
+                self.lock_requested = False
+        self.ending = True
+        try:
+            self.player.terminate()          # reaped by the child watch -> on_player_exit does the cleanup
+        except OSError:
+            pass
+
+    # -- misc ---------------------------------------------------------------------------------------
+    def first_run_notice(self):
+        if FIRST_RUN_MARK.exists():
+            return
+        try:
+            FIRST_RUN_MARK.parent.mkdir(parents=True, exist_ok=True)
+            FIRST_RUN_MARK.touch()
+            subprocess.Popen(['notify-send', '-a', 'Screensaver', '-i', 'preferences-desktop-screensaver',
+                              'Screen blanking is off on Pi-Desktop',
+                              'This machine cannot bring the display back after a blank at 4K@120 Hz, so a '
+                              'screensaver runs instead. Choose it and set the delay in Settings ▸ Power.'])
+        except OSError:
+            pass
+
+    def quit(self):
+        if self.player:
+            self.preview = True          # never lock on shutdown
+            self.ending = True
+            try:
+                self.player.terminate()
+                self.player.wait(timeout=3)
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+            self.player = None
+        self.release_inhibit()
+        self.loop.quit()
+        return False
+
+
+if __name__ == '__main__':
+    loop = GLib.MainLoop()
+    Daemon(loop)
+    loop.run()
+    sys.exit(0)

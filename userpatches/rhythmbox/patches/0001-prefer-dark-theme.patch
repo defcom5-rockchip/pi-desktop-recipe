@@ -1,0 +1,16 @@
+--- a/shell/rb-application.c
++++ b/shell/rb-application.c
+@@ -307,7 +307,12 @@
+ 	};
+ 
+ 	(* G_APPLICATION_CLASS (rb_application_parent_class)->startup) (app);
+-	
++
++	/* Pi Desktop: use the dark variant of the GTK theme by default */
++	g_object_set (gtk_settings_get_default (),
++		      "gtk-application-prefer-dark-theme", TRUE,
++		      NULL);
++
+ 	rb_stock_icons_init ();
+ 
+ 	g_action_map_add_action_entries (G_ACTION_MAP (app),

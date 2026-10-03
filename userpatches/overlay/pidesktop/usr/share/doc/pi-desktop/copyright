@@ -1,0 +1,48 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: Pi-Desktop
+Upstream-Contact: https://github.com/defcom5-rockchip/pi-desktop/issues
+Source: https://github.com/defcom5-rockchip/pi-desktop-recipe
+Comment:
+ Pi-Desktop is an image for the Orange Pi 5B built from Ubuntu 26.04 packages with the
+ Armbian build framework and Armbian's Rockchip vendor kernel. It is not affiliated with or
+ endorsed by Canonical, Armbian, Rockchip, Arm, Google, Mozilla, Microsoft or Shenzhen Xunlong.
+ .
+ What Pi-Desktop adds to the image, and the licence of each part:
+ .
+  * Pi-Desktop's own programs and scripts (/usr/local/bin/pidesktop-*, /usr/local/sbin/pidesktop-*,
+    the Files add-on, systemd units, configuration): GPL-3.0-or-later.
+  * Pi-Desktop's artwork (the Plaid wallpaper, the penguin screensaver clip and still, the tartan
+    terminal logo, the pi-desktop logo and the installer icons): CC BY-SA 4.0.
+  * Kernel: Armbian's linux-rockchip branch rk-6.1-rkr7.2 at commit 44bbd021d7808cab93d1f2d64c1f092038257576
+    with 11 Pi-Desktop patches (GPL-2.0). Complete source: https://github.com/defcom5-rockchip/linux-rockchip
+    tag pi-desktop-4.0, and the patches in the recipe repository (userpatches/kernel/).
+  * Boot loader: Armbian's build of radxa/u-boot branch next-dev-v2024.10 commit 39cd993e5d6296635438e84f4576b3a9bf76f86e,
+    unmodified (GPL-2.0+), with Rockchip's binary boot blobs (rkbin, Rockchip's licence).
+  * Packages Pi-Desktop rebuilt or patched (sources in the recipe repository): gnome-control-center (+pd3),
+    Rhythmbox 3.5.1, PipeWire 1.6.9 / WirePlumber 0.5.17, rockchip-vaapi (https://github.com/defcom5-rockchip/rockchip-vaapi),
+    librockchip-mpp (10-bit fix), the libmali-hook shim.
+  * Arm Mali user-space driver (libmali): Arm's end-user licence, see /usr/share/doc/libmali-*/copyright.
+  * Wireless/Bluetooth firmware: Armbian's armbian-firmware package (vendor licences).
+ .
+ Everything else is unmodified Ubuntu 26.04 (ports.ubuntu.com), xtradeb or Ubuntu Mozilla Team PPA
+ packages; their sources are in those archives at the versions listed in the release manifest.
+
+Files: *
+Copyright: 2026 defcom5-rockchip
+License: GPL-3.0-or-later
+ This program is free software: you can redistribute it and/or modify it under the terms of
+ the GNU General Public License as published by the Free Software Foundation, either version 3
+ of the License, or (at your option) any later version.
+ .
+ This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ See the GNU General Public License for more details.
+ .
+ On Debian-based systems the full text is in /usr/share/common-licenses/GPL-3.
+
+Files: /usr/share/backgrounds/pi-desktop/* /usr/share/pi-desktop/screensaver/* /usr/share/pi-desktop/fastfetch/plaid.ans
+ /usr/share/icons/hicolor/*/apps/pi-desktop.* /usr/share/icons/hicolor/scalable/apps/pidesktop-get-*.svg
+ /usr/share/plymouth/themes/pi-desktop/watermark.png /usr/share/plymouth/themes/pi-desktop/bgrt-fallback.png
+Copyright: 2026 defcom5-rockchip
+License: CC-BY-SA-4.0
+ Creative Commons Attribution-ShareAlike 4.0 International. https://creativecommons.org/licenses/by-sa/4.0/

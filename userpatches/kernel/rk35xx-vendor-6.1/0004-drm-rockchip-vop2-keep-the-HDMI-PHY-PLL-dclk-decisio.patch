@@ -1,0 +1,57 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: defcom5-rockchip <286489597+defcom5-rockchip@users.noreply.github.com>
+Date: Tue, 22 Sep 2026 14:37:55 -0700
+Subject: [PATCH 4/5] drm/rockchip: vop2: keep the HDMI-PHY-PLL dclk decision
+ at the 600 MHz TMDS limit
+
+vop2_is_dclk_switch_to_cru_pll() (new in rkr7.x) compares against
+VOP2_MAX_DCLK_RATE, which we raise to 1200 MHz so 4K@120 is offered.
+That also told the driver to keep 1082.89 MHz on the HDMI PHY PLL,
+whose rkr7.x clk op clamps to the current TMDS rate until the bridge
+has switched it to FRL through phy_configure(): the result was
+'set dclk_vop0 to 1082890000, get 533250000' and a fallback to p60.
+Give the PLL-source decision its own 600 MHz constant so FRL-rate
+modes take the CRU path, as Rockchip intends.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ drivers/gpu/drm/rockchip/rockchip_drm_vop2.c | 12 ++++++++++--
+ 1 file changed, 10 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/gpu/drm/rockchip/rockchip_drm_vop2.c b/drivers/gpu/drm/rockchip/rockchip_drm_vop2.c
+index 81791adef3dc..138d40d48018 100644
+--- a/drivers/gpu/drm/rockchip/rockchip_drm_vop2.c
++++ b/drivers/gpu/drm/rockchip/rockchip_drm_vop2.c
+@@ -175,6 +175,14 @@
+ #define VOP2_MAX_VP_OUTPUT_WIDTH	4096
+ /* KHZ - raised 600000->1200000 for RK3588 4K@120Hz (jamautt, PR #1326) */
+ #define VOP2_MAX_DCLK_RATE		1200000
++/*
++ * KHZ - the highest dclk the HDMI PHY PLL can source for VOP. Above this the
++ * link runs FRL: the rkr7.x PHY driver only enters FRL through phy_configure()
++ * (its clk op clamps CCF requests to the current TMDS rate), so dclk must come
++ * from the CRU instead. This used to share VOP2_MAX_DCLK_RATE; raising that
++ * ceiling for 4K@120 must not drag the PLL-source decision along with it.
++ */
++#define VOP2_HDMI_PHY_PLL_MAX_DCLK_RATE	600000
+ 
+ enum vop2_data_format {
+ 	VOP2_FMT_ARGB8888 = 0,
+@@ -6308,7 +6316,7 @@ static u32 vop2_get_hdmi_tmds_rate(struct rockchip_crtc_state *vcstate, u32 rate
+ static bool vop2_is_dclk_switch_to_cru_pll(struct vop2 *vop2, struct rockchip_crtc_state *vcstate,
+ 					   u32 dclk_rate)
+ {
+-	if (dclk_rate > VOP2_MAX_DCLK_RATE)
++	if (dclk_rate > VOP2_HDMI_PHY_PLL_MAX_DCLK_RATE)
+ 		return true;
+ 
+ 	/*
+@@ -6322,7 +6330,7 @@ static bool vop2_is_dclk_switch_to_cru_pll(struct vop2 *vop2, struct rockchip_cr
+ 	    vcstate->output_mode == ROCKCHIP_OUT_MODE_YUV420)
+ 		return true;
+ 
+-	if (vop2_get_hdmi_tmds_rate(vcstate, dclk_rate) <= VOP2_MAX_DCLK_RATE)
++	if (vop2_get_hdmi_tmds_rate(vcstate, dclk_rate) <= VOP2_HDMI_PHY_PLL_MAX_DCLK_RATE)
+ 		return false;
+ 
+ 	return true;

@@ -1,0 +1,66 @@
+From a4878d1d17c1891761a81d7411f3ad62feab474f Mon Sep 17 00:00:00 2001
+From: defcom5-rockchip <286489597+defcom5-rockchip@users.noreply.github.com>
+Date: Thu, 24 Sep 2026 10:52:37 -0700
+Subject: [PATCH] drm/bridge: dw-hdmi-qp: tunable FLT_update poll interval
+ after FRL training
+
+Once FRL link training succeeds, dw_hdmi_qp_flt_ltsp() reads the sink's
+SCDC_UPDATE_0 over DDC every 100 ms for as long as the link is up. The
+older BSP (6.1.75) did not poll at all after training.
+
+On an Orange Pi 5B at 3840x2160@120 (FRL 10G x 4 lanes) the sink's DDC
+stops answering after 14 minutes to 3 hours ("i2c read time out" at ~4/s),
+followed by a black screen; the same monitor and cable at the same mode
+and link on the 6.1.75 kernel, which does not poll, did not show this.
+
+Add a runtime-writable module parameter, frl_update_poll_ms (default 100,
+unchanged behaviour), so the interval can be raised or the reads stopped
+(0) to test whether the steady DDC traffic is what wedges the sink. With
+0, the dclk/disconnect checks still run; only the SCDC read is skipped.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ drivers/gpu/drm/bridge/synopsys/dw-hdmi-qp.c | 20 ++++++++++++++++++--
+ 1 file changed, 18 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/gpu/drm/bridge/synopsys/dw-hdmi-qp.c b/drivers/gpu/drm/bridge/synopsys/dw-hdmi-qp.c
+index d9a8302a5d1b..ae1f61be10db 100644
+--- a/drivers/gpu/drm/bridge/synopsys/dw-hdmi-qp.c
++++ b/drivers/gpu/drm/bridge/synopsys/dw-hdmi-qp.c
+@@ -48,6 +48,17 @@
+ 
+ #include <media/cec-notifier.h>
+ 
++/*
++ * Interval between SCDC FLT_update reads after FRL link training succeeds.
++ * Default 100 ms (unchanged behaviour); HDMI 2.1 asks for <= 250 ms. Larger
++ * values cut DDC traffic for sinks whose DDC/SCDC slave wedges under steady
++ * polling; 0 stops the reads (older BSP behaviour: nothing polls after
++ * training). Read on every tick, so it can be changed at runtime.
++ */
++static unsigned int frl_update_poll_ms = 100;
++module_param(frl_update_poll_ms, uint, 0644);
++MODULE_PARM_DESC(frl_update_poll_ms, "FRL FLT_update SCDC poll interval in ms after link training (default 100, 0 = don't poll)");
++
+ #define DDC_CI_ADDR		0x37
+ #define DDC_SEGMENT_ADDR	0x30
+ 
+@@ -2485,8 +2496,13 @@ static int dw_hdmi_qp_flt_ltsp(struct dw_hdmi_qp *hdmi)
+ 		}
+ 
+ 		if (!i) {
+-			i = 5;
+-			drm_scdc_readb(hdmi->ddc, SCDC_UPDATE_0, &val);
++			unsigned int poll_ms = READ_ONCE(frl_update_poll_ms);
++
++			/* poll_ms == 0: skip the SCDC read, keep the dclk/disconnect checks */
++			i = poll_ms ? max(1U, poll_ms / 20) : 5;
++			val = 0;
++			if (poll_ms)
++				drm_scdc_readb(hdmi->ddc, SCDC_UPDATE_0, &val);
+ 
+ 			mutex_lock(&hdmi->audio_mutex);
+ 			if (hdmi->dclk_en) {
+-- 
+2.53.0
+

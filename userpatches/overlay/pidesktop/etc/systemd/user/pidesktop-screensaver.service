@@ -1,0 +1,16 @@
+[Unit]
+Description=Pi-Desktop screensaver (replaces screen blanking, which cannot resume at 4K@120 Hz)
+PartOf=graphical-session.target
+After=graphical-session.target
+# not in the GDM greeter session
+ConditionUser=!@system
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/pidesktop-screensaverd
+Restart=on-failure
+RestartSec=5
+Slice=session.slice
+
+[Install]
+WantedBy=graphical-session.target

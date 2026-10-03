@@ -1,0 +1,10 @@
+# Pi-Desktop: the GDM login screen must not blank or suspend either. It runs its own GNOME session whose
+# settings are compiled from this directory (dconf compile -> /var/lib/gdm3/greeter-dconf-defaults; stock
+# values: blank after 5 min, suspend after 20 min). The display may not come back after a blank on this
+# board; at 4K@120 Hz the board hangs. dconf paths, not GSettings schema names.
+[org/gnome/desktop/session]
+idle-delay=uint32 0
+
+[org/gnome/settings-daemon/plugins/power]
+sleep-inactive-ac-type='nothing'
+sleep-inactive-battery-type='nothing'

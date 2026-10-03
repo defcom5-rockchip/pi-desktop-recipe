@@ -1,0 +1,12 @@
+[Unit]
+Description=Bluetooth auto-heal sentinel (AP6275P)
+After=bluetooth.target bluetooth-hciattach.service
+
+[Service]
+ExecStart=/usr/local/sbin/bt-sentinel
+Restart=always
+RestartSec=5
+KillMode=process
+
+[Install]
+WantedBy=multi-user.target

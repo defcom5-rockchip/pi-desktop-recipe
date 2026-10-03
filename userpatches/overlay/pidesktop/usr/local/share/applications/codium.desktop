@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=VSCodium
+Comment=Code editor: the community build of VS Code without Microsoft's telemetry. Downloads on first use.
+Exec=/usr/local/bin/pidesktop-get vscodium %F
+Icon=pidesktop-get-code
+Terminal=false
+Categories=Development;IDE;TextEditor;
+Keywords=code;editor;vscode;vscodium;programming;
+StartupNotify=true

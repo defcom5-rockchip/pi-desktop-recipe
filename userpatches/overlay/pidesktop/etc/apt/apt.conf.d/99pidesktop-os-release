@@ -1,0 +1,2 @@
+// Pi-Desktop: re-apply our PRETTY_NAME after package runs (Armbian base-files rewrites it)
+DPkg::Post-Invoke { "[ -x /usr/local/sbin/pidesktop-os-release ] && /usr/local/sbin/pidesktop-os-release || true"; };

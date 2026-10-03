@@ -1,0 +1,16 @@
+# Binary build inputs live in a GitHub release, not in git (see fetch-inputs.sh and userpatches/INPUTS.sha256).
+inputs/
+*.deb
+*.mp4
+*.img
+*.img.*
+*.so
+*.so.*
+*.ko
+
+# Scratch produced by fetch-inputs.sh or the build scripts
+*.part
+*.mismatch
+*.log
+__pycache__/
+*.pyc

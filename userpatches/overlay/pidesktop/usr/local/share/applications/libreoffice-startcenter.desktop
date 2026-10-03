@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=LibreOffice
+Comment=Writer, Calc, Impress, Draw and Math. Downloads on first use.
+Exec=/usr/local/bin/pidesktop-get libreoffice %U
+Icon=pidesktop-get-office
+Terminal=false
+Categories=Office;WordProcessor;Spreadsheet;Presentation;
+Keywords=office;writer;calc;impress;document;spreadsheet;presentation;
+StartupNotify=true

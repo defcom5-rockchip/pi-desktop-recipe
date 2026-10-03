@@ -1,0 +1,3 @@
+# Pi-Desktop: GNOME screen blank stays off (the display does not come back after a blank at 4K@120 Hz;
+# the Screensaver group in Settings > Power replaces it).
+/org/gnome/desktop/session/idle-delay

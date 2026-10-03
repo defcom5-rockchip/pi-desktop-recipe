@@ -1,0 +1,31 @@
+#!/bin/bash
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 defcom5-rockchip (Pi-Desktop). See LICENSE in the recipe repository.
+# Pi-Desktop: follow the Orange Pi 5/5B 3.5 mm jack the way a laptop does.
+# The jack (ES8388) and the monitor's HDMI/DP audio are separate sound cards on this board, so GNOME's
+# "Headphones / Headset" choice only selects a port on the analog card and the sound stays on the
+# monitor. This moves the default output to the jack on plug-in and back to the previous output on
+# unplug. It acts only on jack changes (and once at login), so a manual choice in Settings is respected.
+CARD=rockchipes8388
+SINK=alsa_output.platform-es8388-sound.stereo-fallback
+PREV=${XDG_RUNTIME_DIR:-/tmp}/pidesktop-hp-prev-sink
+jack() { amixer -c "$CARD" cget iface=CARD,name='Headphone Jack' 2>/dev/null | sed -n 's/.*: values=//p'; }
+have() { pactl list short sinks 2>/dev/null | awk '{print $2}' | grep -qx "$1"; }
+apply() {
+	local j cur p; j=$(jack); cur=$(pactl get-default-sink 2>/dev/null)
+	if [ "$j" = on ] && [ "$cur" != "$SINK" ] && have "$SINK"; then
+		printf '%s\n' "$cur" > "$PREV"; pactl set-default-sink "$SINK"
+		logger -t pidesktop-hp "headphones in: $cur -> $SINK"
+	elif [ "$j" = off ] && [ "$cur" = "$SINK" ]; then
+		p=$(cat "$PREV" 2>/dev/null)
+		if [ -n "$p" ] && have "$p"; then pactl set-default-sink "$p"; logger -t pidesktop-hp "headphones out: -> $p"; fi
+	fi
+}
+for _ in $(seq 1 30); do pactl info >/dev/null 2>&1 && have "$SINK" && break; sleep 1; done
+apply
+last=$(jack)
+alsactl monitor "hw:$CARD" 2>/dev/null | while read -r line; do
+	case "$line" in
+	*"Headphone Jack"*) j=$(jack); if [ "$j" != "$last" ]; then last=$j; sleep 0.5; apply; fi ;;
+	esac
+done
