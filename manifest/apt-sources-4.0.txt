@@ -1,0 +1,318 @@
+Package files:
+ 100 /var/lib/dpkg/status
+     release a=now
+ 500 https://ppa.launchpadcontent.net/xtradeb/apps/ubuntu resolute/main arm64 Packages
+     release v=26.04,o=LP-PPA-xtradeb-apps,a=resolute,n=resolute,l=xtradeb applications,c=main,b=arm64
+     origin ppa.launchpadcontent.net
+ 500 https://download.vscodium.com/debs vscodium/main arm64 Packages
+     release n=vscodium,c=main,b=arm64
+     origin download.vscodium.com
+ 100 http://ports.ubuntu.com resolute-backports/universe arm64 Packages
+     release v=26.04,o=Ubuntu,a=resolute-backports,n=resolute,l=Ubuntu,c=universe,b=arm64
+     origin ports.ubuntu.com
+ 500 http://ports.ubuntu.com resolute-updates/multiverse arm64 Packages
+     release v=26.04,o=Ubuntu,a=resolute-updates,n=resolute,l=Ubuntu,c=multiverse,b=arm64
+     origin ports.ubuntu.com
+ 500 http://ports.ubuntu.com resolute-updates/universe arm64 Packages
+     release v=26.04,o=Ubuntu,a=resolute-updates,n=resolute,l=Ubuntu,c=universe,b=arm64
+     origin ports.ubuntu.com
+ 500 http://ports.ubuntu.com resolute-updates/restricted arm64 Packages
+     release v=26.04,o=Ubuntu,a=resolute-updates,n=resolute,l=Ubuntu,c=restricted,b=arm64
+     origin ports.ubuntu.com
+ 500 http://ports.ubuntu.com resolute-updates/main arm64 Packages
+     release v=26.04,o=Ubuntu,a=resolute-updates,n=resolute,l=Ubuntu,c=main,b=arm64
+     origin ports.ubuntu.com
+ 500 http://ports.ubuntu.com resolute-security/multiverse arm64 Packages
+     release v=26.04,o=Ubuntu,a=resolute-security,n=resolute,l=Ubuntu,c=multiverse,b=arm64
+     origin ports.ubuntu.com
+ 500 http://ports.ubuntu.com resolute-security/universe arm64 Packages
+     release v=26.04,o=Ubuntu,a=resolute-security,n=resolute,l=Ubuntu,c=universe,b=arm64
+     origin ports.ubuntu.com
+ 500 http://ports.ubuntu.com resolute-security/restricted arm64 Packages
+     release v=26.04,o=Ubuntu,a=resolute-security,n=resolute,l=Ubuntu,c=restricted,b=arm64
+     origin ports.ubuntu.com
+ 500 http://ports.ubuntu.com resolute-security/main arm64 Packages
+     release v=26.04,o=Ubuntu,a=resolute-security,n=resolute,l=Ubuntu,c=main,b=arm64
+     origin ports.ubuntu.com
+ 500 http://ports.ubuntu.com resolute/multiverse arm64 Packages
+     release v=26.04,o=Ubuntu,a=resolute,n=resolute,l=Ubuntu,c=multiverse,b=arm64
+     origin ports.ubuntu.com
+ 500 http://ports.ubuntu.com resolute/universe arm64 Packages
+     release v=26.04,o=Ubuntu,a=resolute,n=resolute,l=Ubuntu,c=universe,b=arm64
+     origin ports.ubuntu.com
+ 500 http://ports.ubuntu.com resolute/restricted arm64 Packages
+     release v=26.04,o=Ubuntu,a=resolute,n=resolute,l=Ubuntu,c=restricted,b=arm64
+     origin ports.ubuntu.com
+ 500 http://ports.ubuntu.com resolute/main arm64 Packages
+     release v=26.04,o=Ubuntu,a=resolute,n=resolute,l=Ubuntu,c=main,b=arm64
+     origin ports.ubuntu.com
+ 500 https://ppa.launchpadcontent.net/mozillateam/ppa/ubuntu resolute/main arm64 Packages
+     release v=26.04,o=LP-PPA-mozillateam,a=resolute,n=resolute,l=Firefox ESR and Thunderbird stable builds,c=main,b=arm64
+     origin ppa.launchpadcontent.net
+ 500 https://dl.google.com/linux/chrome-stable/deb stable/main arm64 Packages
+     release v=1.0,o=Google LLC,a=stable,n=stable,l=Google,c=main,b=arm64
+     origin dl.google.com
+ 500 http://apt.armbian.com resolute/resolute-desktop all Packages
+     release o=Armbian,a=resolute,n=resolute,l=Armbian,c=resolute-desktop,b=all
+     origin apt.armbian.com
+ 500 http://apt.armbian.com resolute/resolute-desktop arm64 Packages
+     release o=Armbian,a=resolute,n=resolute,l=Armbian,c=resolute-desktop,b=arm64
+     origin apt.armbian.com
+ 500 http://apt.armbian.com resolute/resolute-utils all Packages
+     release o=Armbian,a=resolute,n=resolute,l=Armbian,c=resolute-utils,b=all
+     origin apt.armbian.com
+ 500 http://apt.armbian.com resolute/resolute-utils arm64 Packages
+     release o=Armbian,a=resolute,n=resolute,l=Armbian,c=resolute-utils,b=arm64
+     origin apt.armbian.com
+ 500 http://apt.armbian.com resolute/main all Packages
+     release o=Armbian,a=resolute,n=resolute,l=Armbian,c=main,b=all
+     origin apt.armbian.com
+ 500 http://apt.armbian.com resolute/main arm64 Packages
+     release o=Armbian,a=resolute,n=resolute,l=Armbian,c=main,b=arm64
+     origin apt.armbian.com
+Pinned packages:
+     firefox-esr-locale-af -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-an -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-ar -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-as -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-az -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-be -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-bg -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-bn -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-br -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-bs -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-ca -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-cs -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-cy -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-da -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-de -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-el -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-en -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-eo -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-es -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-et -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-eu -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-fa -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-fi -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-fr -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-fy -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-ga -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-gd -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-gl -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-gn -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-gu -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-he -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-hi -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-hr -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-hu -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-hy -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-ia -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-id -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-is -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-it -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-ja -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-ka -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-kk -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-km -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-kn -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-ko -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-ku -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-lg -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-lt -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-lv -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-mk -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-ml -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-mn -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-mr -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-ms -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-my -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-nb -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-ne -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-nl -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-nn -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-oc -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-or -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-pa -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-pl -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-pt -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-ro -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-ru -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-si -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-sk -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-sl -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-sq -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-sr -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-sv -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-sw -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-ta -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-te -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-tg -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-th -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-tr -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-uk -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-ur -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-uz -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-vi -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-xh -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-zu -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     chromium-bsu -> 0.9.16.1-5build1 with priority 50
+     firefox-locale-af -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-an -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-ar -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-as -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-az -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-be -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-bg -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-bn -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-br -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-bs -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-ca -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-cs -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-cy -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-da -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-de -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-el -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-en -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-eo -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-es -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-et -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-eu -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-fa -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-fi -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-fr -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-fy -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-ga -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-gd -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-gl -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-gn -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-gu -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-he -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-hi -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-hr -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-hu -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-hy -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-ia -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-id -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-is -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-it -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-ja -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-ka -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-kk -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-km -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-kn -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-ko -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-ku -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-lg -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-lt -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-lv -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-mk -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-ml -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-mn -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-mr -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-ms -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-my -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-nb -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-ne -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-nl -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-nn -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-oc -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-or -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-pa -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-pl -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-pt -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-ro -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-ru -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-si -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-sk -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-sl -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-sq -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-sr -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-sv -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-sw -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-ta -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-te -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-tg -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-th -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-tr -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-uk -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-ur -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-uz -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-vi -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-xh -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-zu -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     chromium-sandbox -> 154.0.8037.92-1xtradeb1.2604.1 with priority 1001
+     chromium-sandbox -> 154.0.8037.57-1xtradeb1.2604.1 with priority 1001
+     chromium-sandbox -> 153.0.8010.52-1xtradeb1.2604.1 with priority 1001
+     chromium-sandbox -> 153.0.8010.47-2xtradeb1.2604.1 with priority 1001
+     google-chrome-stable -> 154.0.8037.92-1 with priority 1001
+     google-chrome-stable -> 154.0.8037.57-1 with priority 1001
+     google-chrome-stable -> 153.0.8010.52-1 with priority 1001
+     chromium-codecs-ffmpeg-extra -> 2:1snap1-0ubuntu4 with priority 50
+     firefox-locale-ast -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-cak -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-csb -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-hsb -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-kab -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     chromium-driver -> 154.0.8037.92-1xtradeb1.2604.1 with priority 1001
+     chromium-driver -> 154.0.8037.57-1xtradeb1.2604.1 with priority 1001
+     chromium-driver -> 153.0.8010.52-1xtradeb1.2604.1 with priority 1001
+     chromium-driver -> 153.0.8010.47-2xtradeb1.2604.1 with priority 1001
+     firefox-locale-mai -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-nso -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     chromium-shell -> 154.0.8037.92-1xtradeb1.2604.1 with priority 1001
+     chromium-shell -> 154.0.8037.57-1xtradeb1.2604.1 with priority 1001
+     chromium-shell -> 153.0.8010.52-1xtradeb1.2604.1 with priority 1001
+     chromium-shell -> 153.0.8010.47-2xtradeb1.2604.1 with priority 1001
+     firefox-locale-szl -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     chromium-codecs-ffmpeg -> 2:1snap1-0ubuntu4 with priority 50
+     thunderbird -> 2:1snap1-0ubuntu5 with priority 50
+     thunderbird -> 1:140.15.0+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     chromium -> 154.0.8037.92-1xtradeb1.2604.1 with priority 1001
+     chromium -> 154.0.8037.57-1xtradeb1.2604.1 with priority 1001
+     chromium -> 153.0.8010.52-1xtradeb1.2604.1 with priority 1001
+     chromium -> 153.0.8010.47-2xtradeb1.2604.1 with priority 1001
+     chromium-headless-shell -> 154.0.8037.92-1xtradeb1.2604.1 with priority 1001
+     chromium-headless-shell -> 154.0.8037.57-1xtradeb1.2604.1 with priority 1001
+     chromium-headless-shell -> 153.0.8010.52-1xtradeb1.2604.1 with priority 1001
+     chromium-headless-shell -> 153.0.8010.47-2xtradeb1.2604.1 with priority 1001
+     firefox -> 9:156.0+build1-0ubuntu0.26.04.1~mt1armbian1 with priority 1001
+     firefox -> 1:1snap1-0ubuntu9.1 with priority 50
+     firefox -> 1:1snap1-0ubuntu8 with priority 50
+     firefox -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-esr-dbg -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-dev -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     chromium-browser -> 2:1snap1-0ubuntu4 with priority 50
+     firefox-esr-locale-ast -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     chromium-chromedriver -> 2:1snap1-0ubuntu4 with priority 50
+     firefox-esr-locale-cak -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-csb -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     chromium-lwn4chrome -> 1.0-3build1 with priority 50
+     firefox-esr-locale-hsb -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-kab -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-mai -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-nso -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-szl -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     chromium-l10n -> 154.0.8037.92-1xtradeb1.2604.1 with priority 1001
+     chromium-l10n -> 154.0.8037.57-1xtradeb1.2604.1 with priority 1001
+     chromium-l10n -> 153.0.8010.52-1xtradeb1.2604.1 with priority 1001
+     chromium-l10n -> 149.0.7827.196-1xtradeb1.2604.1 with priority 1001
+     chromium-common -> 154.0.8037.92-1xtradeb1.2604.1 with priority 1001
+     chromium-common -> 154.0.8037.57-1xtradeb1.2604.1 with priority 1001
+     chromium-common -> 153.0.8010.52-1xtradeb1.2604.1 with priority 1001
+     chromium-common -> 153.0.8010.47-2xtradeb1.2604.1 with priority 1001
+     code -> 1.140.0-1790759479 with priority 1001
+     code -> 1.139.1-1790309508 with priority 1001
+     code -> 1.139.0-1790091463 with priority 1001
+     code -> 1.138.0-1789458676 with priority 1001
+     firefox-geckodriver -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-esr-locale-zh-hans -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr-locale-zh-hant -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-dbg -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-dev -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-esr -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-esr -> 140.16.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     chromium-bsu-data -> 0.9.16.1-5build1 with priority 50
+     chromium-browser-l10n -> 2:1snap1-0ubuntu4 with priority 50
+     firefox-esr-geckodriver -> 140.17.0esr+build1-0ubuntu0.24.04.1~mt1 with priority 1001
+     firefox-locale-zh-hans -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
+     firefox-locale-zh-hant -> 157.0+build1-0ubuntu0.26.04.1~mt1 with priority 1001
