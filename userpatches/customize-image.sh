@@ -344,6 +344,17 @@ grep -q pidesktop-set-hostname "$_fl" 2>/dev/null && bash -n "$_fl" && log "firs
 printf 'Pi-Desktop %s (Linux \\r) — \\l\n\n' "$PDV" > /etc/issue
 apt-get purge -y -qq armbian-zsh armbian-config armbian-plymouth-theme 2>/dev/null || true   # keep armbian-bsp-cli-* (boot scripts, firstlogin) + armbian-firmware
 for f in /etc/update-motd.d/*armbian*; do [[ -f $f ]] && chmod -x "$f"; done
+# Privacy audit before the 4.0 release (2026-10-03): nothing in the image may phone home on its own.
+#  - whoopsie is Ubuntu's crash-report UPLOADER (inactive here, no apport-gtk, no autoreport): removed. apport itself stays:
+#    it only writes local /var/crash files, which have been useful for debugging, and never uploads without whoopsie.
+#  - armbian-quotes fetches a quote of the day from github.armbian.com by cron: the cron job goes.
+#  Still contacting the network by design and disclosed in PRIVACY.md: apt (Ubuntu/Armbian/PPAs), unattended-upgrades,
+#  GNOME Software update checks, fwupd's LVFS metadata refresh, chrony (Ubuntu's NTS pools), mDNS on the LAN, and the
+#  first-login wizard's IP-based timezone/locale suggestion (Armbian's; on the list to replace).
+apt-get purge -y -qq whoopsie whoopsie-preferences >/dev/null 2>&1 && log "privacy: whoopsie (crash uploader) removed" || log "privacy: whoopsie not present"
+rm -f /etc/cron.d/armbian-quotes /etc/cron.daily/armbian-quotes 2>/dev/null; [[ -f /etc/cron.d/armbian-truncate-logs ]] || true
+dpkg -s whoopsie >/dev/null 2>&1 && warn "privacy: whoopsie STILL installed"
+ls /etc/cron.d/armbian-quotes >/dev/null 2>&1 && warn "privacy: armbian-quotes cron still present" || log "privacy: armbian-quotes cron absent"
 [[ -f /etc/default/armbian-motd ]] && sed -i 's/^MOTD_DISABLE=.*/MOTD_DISABLE="header tips updates armbian-config"/' /etc/default/armbian-motd
 # Canonical's IP policy (modified images must not carry Ubuntu's trademarks): the Ubuntu wallpaper and docs packages leave,
 # the OS name is Pi-Desktop (pidesktop-os-release keeps NAME/PRETTY_NAME/LOGO/URLs; ID=ubuntu stays for apt/PPA tooling).
@@ -371,8 +382,16 @@ if [[ -f $BR/pi-desktop.plymouth && -f $BR/plymouth-bgrt-fallback.png && -d /usr
 	install -m0644 -o root -g root "$BR"/pi-desktop.plymouth /usr/share/plymouth/themes/pi-desktop/pi-desktop.plymouth
 	update-alternatives --install /usr/share/plymouth/themes/default.plymouth default.plymouth /usr/share/plymouth/themes/pi-desktop/pi-desktop.plymouth 200 >/dev/null 2>&1
 	update-alternatives --set default.plymouth /usr/share/plymouth/themes/pi-desktop/pi-desktop.plymouth >/dev/null 2>&1
+	# Armbian's image step does NOT rebuild the initrd here: it reuses a cached one unless the hash of a few paths changes
+	# (/etc/initramfs-tools among them; lib/functions/image/initrd.sh). The 4.0 bake of 2026-10-03 shipped Ubuntu's bgrt
+	# splash from that cache although the alternative pointed at ours. A marker that carries the theme's content hash lives
+	# in a hashed path, so any change to the theme invalidates the cache and the plymouth hook packs the new theme.
+	install -d /etc/initramfs-tools/conf.d
+	printf '# Pi-Desktop boot theme: pi-desktop, content %s (cache key for the initrd; do not remove)\n' \
+		"$(cat /usr/share/plymouth/themes/pi-desktop/pi-desktop.plymouth /usr/share/plymouth/themes/pi-desktop/bgrt-fallback.png | sha256sum | cut -c1-16)" \
+		> /etc/initramfs-tools/conf.d/zz-pidesktop-theme
 	update-initramfs -u -k all >/dev/null 2>&1 || true
-	log "plymouth: pi-desktop theme = $(basename "$(readlink -f /etc/alternatives/default.plymouth)")"
+	log "plymouth: pi-desktop theme = $(basename "$(readlink -f /etc/alternatives/default.plymouth)") (initrd cache key $(cut -d' ' -f6 /etc/initramfs-tools/conf.d/zz-pidesktop-theme))"
 else
 	warn "plymouth: pi-desktop theme assets missing — Ubuntu spinner stays"
 fi

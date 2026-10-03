@@ -32,7 +32,7 @@ chip and plays 10-bit video in hardware, which Chromium and Chrome cannot do
 here. LibreOffice comes as Writer, Calc, Impress, Draw and Math; the database
 module isn't included because it needs Java ("sudo apt install
 libreoffice-base" adds it). VSCodium is the community build of VS Code with
-Microsoft's telemetry removed. Everything updates with Software Updater.
+Microsoft's telemetry removed. Everything updates through the "Software" app.
 
 
 3. Screen scaling (how big everything looks)
