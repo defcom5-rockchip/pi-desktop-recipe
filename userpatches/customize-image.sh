@@ -345,15 +345,28 @@ printf 'Pi-Desktop %s (Linux \\r) — \\l\n\n' "$PDV" > /etc/issue
 apt-get purge -y -qq armbian-zsh armbian-config armbian-plymouth-theme 2>/dev/null || true   # keep armbian-bsp-cli-* (boot scripts, firstlogin) + armbian-firmware
 for f in /etc/update-motd.d/*armbian*; do [[ -f $f ]] && chmod -x "$f"; done
 # Privacy audit before the 4.0 release (2026-10-03): nothing in the image may phone home on its own.
-#  - whoopsie is Ubuntu's crash-report UPLOADER (inactive here, no apport-gtk, no autoreport): removed. apport itself stays:
-#    it only writes local /var/crash files, which have been useful for debugging, and never uploads without whoopsie.
+#  - whoopsie, Ubuntu's crash-report UPLOADER, cannot be removed: gnome-control-center Depends on whoopsie-preferences,
+#    which depends on whoopsie (apt refuses the purge against our held Settings package). So it is switched off twice:
+#    both units masked (whoopsie.path watches /var/crash for *.upload files; nothing here ever creates one, since
+#    apport-gtk is absent and automatic reporting is off) and report_crashes=false in /etc/default/whoopsie.
+#    apport itself stays: it only writes local /var/crash files, useful for debugging, and never uploads by itself.
 #  - armbian-quotes fetches a quote of the day from github.armbian.com by cron: the cron job goes.
 #  Still contacting the network by design and disclosed in PRIVACY.md: apt (Ubuntu/Armbian/PPAs), unattended-upgrades,
 #  GNOME Software update checks, fwupd's LVFS metadata refresh, chrony (Ubuntu's NTS pools), mDNS on the LAN, and the
 #  first-login wizard's IP-based timezone/locale suggestion (Armbian's; on the list to replace).
-apt-get purge -y -qq whoopsie whoopsie-preferences >/dev/null 2>&1 && log "privacy: whoopsie (crash uploader) removed" || log "privacy: whoopsie not present"
-rm -f /etc/cron.d/armbian-quotes /etc/cron.daily/armbian-quotes 2>/dev/null; [[ -f /etc/cron.d/armbian-truncate-logs ]] || true
-dpkg -s whoopsie >/dev/null 2>&1 && warn "privacy: whoopsie STILL installed"
+if dpkg -s whoopsie >/dev/null 2>&1; then
+	systemctl mask whoopsie.path whoopsie.service >/dev/null 2>&1 || true
+	[[ -f /etc/default/whoopsie ]] && sed -i 's/^report_crashes=.*/report_crashes=false/' /etc/default/whoopsie
+	grep -q '^report_crashes=' /etc/default/whoopsie 2>/dev/null || echo 'report_crashes=false' >> /etc/default/whoopsie
+	if [[ $(readlink /etc/systemd/system/whoopsie.path) == /dev/null && $(readlink /etc/systemd/system/whoopsie.service) == /dev/null ]]; then
+		log "privacy: whoopsie kept (Settings depends on it) but masked, report_crashes=false"
+	else
+		warn "privacy: whoopsie units NOT masked"
+	fi
+else
+	log "privacy: whoopsie not installed"
+fi
+rm -f /etc/cron.d/armbian-quotes /etc/cron.daily/armbian-quotes 2>/dev/null
 ls /etc/cron.d/armbian-quotes >/dev/null 2>&1 && warn "privacy: armbian-quotes cron still present" || log "privacy: armbian-quotes cron absent"
 [[ -f /etc/default/armbian-motd ]] && sed -i 's/^MOTD_DISABLE=.*/MOTD_DISABLE="header tips updates armbian-config"/' /etc/default/armbian-motd
 # Canonical's IP policy (modified images must not carry Ubuntu's trademarks): the Ubuntu wallpaper and docs packages leave,
