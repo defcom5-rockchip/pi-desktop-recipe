@@ -19,8 +19,9 @@ safe_purge() {
 	[[ ${#want[@]} -gt 0 ]] || { log "purge: none of [$*] installed"; return 0; }
 	sim=$(apt-get -s purge "${want[@]}" 2>&1 | awk '/^Remv /{print $2}' | sed 's/:.*//' | sort -u)
 	extra=$(comm -23 <(printf '%s\n' "$sim") <(printf '%s\n' "${want[@]}" | sort -u))
-	if [[ -n $extra ]]; then
-		warn "purge of [${want[*]}] REFUSED — apt would also remove: $(echo $extra)"
+	missing=$(comm -13 <(printf '%s\n' "$sim") <(printf '%s\n' "${want[@]}" | sort -u))
+	if [[ -n $extra || -n $missing ]]; then
+		warn "purge of [${want[*]}] REFUSED — simulation listed [$(echo $sim)]; extra: [$(echo $extra)] not listed: [$(echo $missing)]"
 		return 1
 	fi
 	apt-get purge -y -qq "${want[@]}" >/dev/null 2>&1 && log "purged: ${want[*]}" || { warn "purge of [${want[*]}] failed"; return 1; }
@@ -390,12 +391,12 @@ ls /etc/cron.d/armbian-quotes >/dev/null 2>&1 && warn "privacy: armbian-quotes c
 # the OS name is Pi-Desktop (pidesktop-os-release keeps NAME/PRETTY_NAME/LOGO/URLs; ID=ubuntu stays for apt/PPA tooling).
 # ubuntu-wallpapers CANNOT go: Ubuntu's gnome-shell package depends on it. It stays installed and unused: its entries are
 # hidden from Settings > Appearance (the chooser XMLs are diverted away) and the default wallpaper is ours.
-safe_purge ubuntu-docs
+# ubuntu-docs stays too: gnome-user-docs (GNOME's Help content) depends on it on Ubuntu; it is documentation, not a mark.
 safe_purge plymouth-theme-ubuntu-text || true
 for x in /usr/share/gnome-background-properties/*ubuntu*.xml /usr/share/gnome-background-properties/*resolute*.xml; do
 	[[ -f $x ]] && dpkg-divert --quiet --add --rename --divert "$x.pidesktop-hidden" "$x"
 done
-log "branding: Ubuntu wallpapers hidden from the chooser ($(ls /usr/share/gnome-background-properties/*.pidesktop-hidden 2>/dev/null | wc -l) lists diverted); ubuntu-docs $(dpkg -s ubuntu-docs >/dev/null 2>&1 && echo present || echo removed)"
+log "branding: Ubuntu wallpapers hidden from the chooser ($(ls /usr/share/gnome-background-properties/*.pidesktop-hidden 2>/dev/null | wc -l) lists diverted); ubuntu-docs kept for GNOME Help"
 # Pi-Desktop logo (branding/, CC BY-SA 4.0): Settings > About (LOGO=pi-desktop), the login screen and the boot screen. The boot
 # theme derives from Ubuntu's spinner (plymouth's own GPL animation frames) with our watermark and fallback logo.
 BR="$OV"/branding
@@ -530,6 +531,19 @@ install -Dm0644 "$OV"/etc/systemd/journald.conf.d/10-pidesktop-persistent.conf /
 install -d -m2755 -g systemd-journal /var/log/journal 2>/dev/null || install -d /var/log/journal
 log "journald: persistent (200 MB)"
 
+# ---------------------------------------------------------------- final guard: a desktop image must still contain its desktop
+# (The first version of this guard sat after the script's exit 0 and never ran; bake #4 of 2026-10-03 shipped without
+# GNOME's Help content because of a purge this guard would not have caught either. Belt and braces: it runs here.)
+MISSING=""
+for p in gnome-shell gdm3 libmutter-18-0 mutter-common gnome-session-bin gnome-control-center nautilus chromium pipewire wireplumber fonts-adwaita gnome-user-docs yelp; do
+	dpkg -s "$p" >/dev/null 2>&1 || MISSING="$MISSING $p"
+done
+if [[ -n $MISSING ]]; then
+	warn "CRITICAL: core desktop packages missing:$MISSING — refusing to finish this image"
+	exit 1
+fi
+log "final guard: core desktop packages present"
+
 # ---------------------------------------------------------------- manifest for Pi Claude
 {
 	echo "Pi-Desktop ${PDV} — built $(date -u +%F' '%T) UTC — BOARD=$BOARD RELEASE=$RELEASE FAMILY=$LINUXFAMILY GPU=$GPU"
@@ -546,15 +560,3 @@ apt-get clean
 find /var/lib/apt/lists -type f ! -name lock -delete 2>/dev/null
 find /var/cache/apt -type f -delete 2>/dev/null   # framework pre-flights tolerate at most 1 file here too
 exit 0
-
-
-# ---------------------------------------------------------------- final guard: a desktop image must still contain its desktop
-MISSING=""
-for p in gnome-shell gdm3 mutter gnome-session-bin gnome-control-center nautilus chromium pipewire wireplumber fonts-adwaita; do
-	dpkg -s "$p" >/dev/null 2>&1 || MISSING="$MISSING $p"
-done
-if [[ -n $MISSING ]]; then
-	warn "CRITICAL: core desktop packages missing:$MISSING — refusing to finish this image"
-	exit 1
-fi
-log "final guard: core desktop packages present"
