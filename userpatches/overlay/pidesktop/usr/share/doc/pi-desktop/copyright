@@ -20,7 +20,7 @@ Comment:
     unmodified (GPL-2.0+), with Rockchip's binary boot blobs (rkbin, Rockchip's licence).
   * Packages Pi-Desktop rebuilt or patched (sources in the recipe repository): gnome-control-center (+pd3),
     Rhythmbox 3.5.1, PipeWire 1.6.9 / WirePlumber 0.5.17, rockchip-vaapi (https://github.com/defcom5-rockchip/rockchip-vaapi),
-    librockchip-mpp (10-bit fix), the libmali-hook shim.
+    librockchip-mpp and librga (rebuilt for 26.04), the libmali-hook shim.
   * Arm Mali user-space driver (libmali): Arm's end-user licence, see /usr/share/doc/libmali-*/copyright.
   * Wireless/Bluetooth firmware: Armbian's armbian-firmware package (vendor licences).
  .

@@ -2,7 +2,7 @@
 #
 # install-pro-updates.sh — installs the Pro Updates tool (CLI + GTK GUI + launcher)
 # on a Debian/Ubuntu box. Run it from the folder that holds pro-updates.py and
-# pro-updates-gui.py (i.e. this folder).
+# pro-updates-gui.py (i.e. this Share/CLAUDE PI bundle).
 #
 #   bash install-pro-updates.sh            # install / update
 #   bash install-pro-updates.sh --uninstall

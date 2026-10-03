@@ -57,7 +57,7 @@ Paths are under `userpatches/overlay/pidesktop/`.
   `debian/` packaging used for the `+pd31` rebuild is not in this repository. Add the `.dsc`/`.debian.tar.xz`
   to the `inputs-4.0` release or a note on where the `~rk1` packaging lives. Note also that the image's
   `/usr/share/doc/pi-desktop/copyright` (in `overlay/pidesktop/usr/share/doc/pi-desktop/`) describes this
-  package as "librockchip-mpp (10-bit fix)", while the package changelog for `+pd31` says "rebuild for
+  package as "librockchip-mpp and librga (rebuilt for 26.04)" (wording reconciled 2026-10-03), while the package changelog for `+pd31` says "rebuild for
   resolute" only; if a 10-bit patch is in the build, it belongs in this repository (or the `inputs-4.0`
   release) and in the changelog.
 - **librga2**: the `~rk1` binary was taken as built; record the PPA/build it was downloaded from.

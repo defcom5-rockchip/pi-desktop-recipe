@@ -33,4 +33,4 @@ Trade-off at 0: a sink-requested FLT re-train (FLT_update bit 5) is ignored, exa
 Test order: 120 Hz with `frl_update_poll_ms=0` for >3 h incl. the VLC/Firefox load that failed before
 (failures came at 14 min / 2 h / 3 h). Clean → try 250. Still fails at 0 → polling is not it; next is
 0001 `rockchipdrm.frl_max_rate_per_lane=8` (32G). Both compile-tested for arm64 against test2's
-/boot/config (O=/mnt/build/PI_Studio/o-rkr72-ct), branch frl-max-rate-param @ a4878d1d17c1.
+/boot/config (O=(a local build tree)), branch frl-max-rate-param @ a4878d1d17c1.
