@@ -10,6 +10,21 @@ GPU="${PIDESKTOP_GPU_STACK:-mali}"
 export DEBIAN_FRONTEND=noninteractive APT_LISTCHANGES_FRONTEND=none
 log() { echo "I: [pi-desktop] $*"; }
 warn() { echo "W: [pi-desktop] $*" >&2; }
+# safe_purge PKG... — purge only if apt would remove exactly the named packages and nothing else. Lesson of the first
+# 4.0 bake (2026-10-03): `apt-get purge -y ubuntu-wallpapers` silently took gnome-shell, gdm3 and the session with it
+# (Ubuntu's gnome-shell Depends on ubuntu-wallpapers) and the image booted to a root console. Never purge blind again.
+safe_purge() {
+	local want=() extra sim p
+	for p in "$@"; do dpkg -s "$p" >/dev/null 2>&1 && want+=("$p"); done
+	[[ ${#want[@]} -gt 0 ]] || { log "purge: none of [$*] installed"; return 0; }
+	sim=$(apt-get -s purge "${want[@]}" 2>&1 | awk '/^Remv /{print $2}' | sed 's/:.*//' | sort -u)
+	extra=$(comm -23 <(printf '%s\n' "$sim") <(printf '%s\n' "${want[@]}" | sort -u))
+	if [[ -n $extra ]]; then
+		warn "purge of [${want[*]}] REFUSED — apt would also remove: $(echo $extra)"
+		return 1
+	fi
+	apt-get purge -y -qq "${want[@]}" >/dev/null 2>&1 && log "purged: ${want[*]}" || { warn "purge of [${want[*]}] failed"; return 1; }
+}
 
 [[ "$RELEASE" == "resolute" ]] || { warn "customize-image: RELEASE=$RELEASE, this layer is written for resolute — skipping"; exit 0; }
 
@@ -368,11 +383,19 @@ else
 fi
 rm -f /etc/cron.d/armbian-quotes /etc/cron.daily/armbian-quotes 2>/dev/null
 ls /etc/cron.d/armbian-quotes >/dev/null 2>&1 && warn "privacy: armbian-quotes cron still present" || log "privacy: armbian-quotes cron absent"
-[[ -f /etc/default/armbian-motd ]] && sed -i 's/^MOTD_DISABLE=.*/MOTD_DISABLE="header tips updates armbian-config"/' /etc/default/armbian-motd
+# Armbian's 20-ip-info curls ipv4.whatismyip.akamai.com at every login to print a WAN address: off, with the rest of the
+# Armbian banner. Only our one-line 05-pi-desktop and the unattended-upgrades notice remain.
+[[ -f /etc/default/armbian-motd ]] && sed -i 's/^MOTD_DISABLE=.*/MOTD_DISABLE="header ap-info ip-info containers-info sysinfo tips updates commands fwupd autoreboot-warn armbian-config"/' /etc/default/armbian-motd
 # Canonical's IP policy (modified images must not carry Ubuntu's trademarks): the Ubuntu wallpaper and docs packages leave,
 # the OS name is Pi-Desktop (pidesktop-os-release keeps NAME/PRETTY_NAME/LOGO/URLs; ID=ubuntu stays for apt/PPA tooling).
-apt-get purge -y -qq ubuntu-docs plymouth-theme-ubuntu-text $(dpkg-query -W -f='${Package}\n' 'ubuntu-wallpapers*' 2>/dev/null) >/dev/null 2>&1 \
-	&& log "branding: Ubuntu wallpapers/docs removed" || warn "branding: Ubuntu artwork purge had errors"
+# ubuntu-wallpapers CANNOT go: Ubuntu's gnome-shell package depends on it. It stays installed and unused: its entries are
+# hidden from Settings > Appearance (the chooser XMLs are diverted away) and the default wallpaper is ours.
+safe_purge ubuntu-docs
+safe_purge plymouth-theme-ubuntu-text || true
+for x in /usr/share/gnome-background-properties/*ubuntu*.xml /usr/share/gnome-background-properties/*resolute*.xml; do
+	[[ -f $x ]] && dpkg-divert --quiet --add --rename --divert "$x.pidesktop-hidden" "$x"
+done
+log "branding: Ubuntu wallpapers hidden from the chooser ($(ls /usr/share/gnome-background-properties/*.pidesktop-hidden 2>/dev/null | wc -l) lists diverted); ubuntu-docs $(dpkg -s ubuntu-docs >/dev/null 2>&1 && echo present || echo removed)"
 # Pi-Desktop logo (branding/, CC BY-SA 4.0): Settings > About (LOGO=pi-desktop), the login screen and the boot screen. The boot
 # theme derives from Ubuntu's spinner (plymouth's own GPL animation frames) with our watermark and fallback logo.
 BR="$OV"/branding
@@ -412,7 +435,7 @@ fi
 install -Dm0644 -o root -g root "$OV"/usr/share/doc/pi-desktop/copyright /usr/share/doc/pi-desktop/copyright
 cat > /etc/update-motd.d/05-pi-desktop <<-M
 	#!/bin/sh
-	printf '\\n  Pi-Desktop ${PDV}  ·  Ubuntu 26.04 LTS / GNOME 50  ·  kernel %s\\n\\n' "\$(uname -r)"
+	printf '\\n  Pi-Desktop ${PDV}  ·  built from Ubuntu 26.04 packages  ·  GNOME 50  ·  kernel %s\\n\\n' "\$(uname -r)"
 M
 chmod +x /etc/update-motd.d/05-pi-desktop
 
@@ -523,3 +546,15 @@ apt-get clean
 find /var/lib/apt/lists -type f ! -name lock -delete 2>/dev/null
 find /var/cache/apt -type f -delete 2>/dev/null   # framework pre-flights tolerate at most 1 file here too
 exit 0
+
+
+# ---------------------------------------------------------------- final guard: a desktop image must still contain its desktop
+MISSING=""
+for p in gnome-shell gdm3 mutter gnome-session-bin gnome-control-center nautilus chromium pipewire wireplumber fonts-adwaita; do
+	dpkg -s "$p" >/dev/null 2>&1 || MISSING="$MISSING $p"
+done
+if [[ -n $MISSING ]]; then
+	warn "CRITICAL: core desktop packages missing:$MISSING — refusing to finish this image"
+	exit 1
+fi
+log "final guard: core desktop packages present"
