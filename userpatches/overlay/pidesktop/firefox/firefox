@@ -3,4 +3,9 @@
 # into nothing when EGL is not glvnd's, so give Firefox a private libGL that IS the Mali GLES library. Wayland only.
 export LD_LIBRARY_PATH="/usr/local/lib/pidesktop-firefox-mali${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export MOZ_ENABLE_WAYLAND=1
+# Plaid Pi: the Mali blob imports a 16-bit plane as an integer texture and the stock Firefox then draws 10-bit video
+# dark (rockchip-vaapi KI-11). Hide the 10-bit profiles for Firefox only: 10-bit (HEVC Main 10, VP9 Profile 2, AV1
+# 10-bit) decodes in software with correct colours, 8-bit stays on the VPU. Remove once Firefox carries the fix
+# (the +pd3 personal build already does).
+export RKVA_HIDE_10BIT=1
 exec /usr/lib/firefox/firefox "$@"
