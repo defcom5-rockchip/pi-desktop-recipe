@@ -3,9 +3,9 @@
  "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
 <!-- Pi-Desktop: gives the password prompt for the first-click app installer a clear message (pkexec). -->
 <policyconfig>
-  <vendor>Pi-Desktop</vendor>
+  <vendor>Plaid Pi</vendor>
   <action id="org.pidesktop.install-app">
-    <description>Install an app for Pi-Desktop</description>
+    <description>Install an app for Plaid Pi</description>
     <message>Authentication is required to download and install this app</message>
     <icon_name>system-software-install</icon_name>
     <defaults>

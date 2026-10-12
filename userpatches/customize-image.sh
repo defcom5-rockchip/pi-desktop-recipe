@@ -342,7 +342,7 @@ echo "${PDV}" > /etc/pi-desktop-release
 install -m0755 "$OV"/usr/local/sbin/pidesktop-os-release /usr/local/sbin/pidesktop-os-release
 install -Dm0644 "$OV"/etc/apt/apt.conf.d/99pidesktop-os-release /etc/apt/apt.conf.d/99pidesktop-os-release
 /usr/local/sbin/pidesktop-os-release
-grep -q "Pi-Desktop ${PDV}" /etc/os-release && log "os-release: $(grep PRETTY_NAME /etc/os-release)" || warn "PRETTY_NAME not applied to /etc/os-release"
+grep -q "Plaid Pi ${PDV}" /etc/os-release && log "os-release: $(grep PRETTY_NAME /etc/os-release)" || warn "PRETTY_NAME not applied to /etc/os-release"
 echo pidesktop > /etc/hostname; sed -i "s/127.0.1.1.*/127.0.1.1\tpidesktop/" /etc/hosts
 # "pidesktop" is only the pre-setup name: Armbian's first login never asks for a computer name, and two Pi-Desktops on one
 # network would clash (mDNS, Samba). Ask right after the account is created, suggesting <username>-pidesktop (2026-09-26).
@@ -357,7 +357,7 @@ if [[ -f $_fl ]] && ! grep -q pidesktop-set-hostname "$_fl"; then
 ' "$_fl"
 fi
 grep -q pidesktop-set-hostname "$_fl" 2>/dev/null && bash -n "$_fl" && log "first login: asks for the computer name" || warn "first login: computer-name step NOT inserted (armbian-firstlogin changed?)"
-printf 'Pi-Desktop %s (Linux \\r) — \\l\n\n' "$PDV" > /etc/issue
+printf 'Plaid Pi %s (Linux \\r) — \\l\n\n' "$PDV" > /etc/issue
 apt-get purge -y -qq armbian-zsh armbian-config armbian-plymouth-theme 2>/dev/null || true   # keep armbian-bsp-cli-* (boot scripts, firstlogin) + armbian-firmware
 for f in /etc/update-motd.d/*armbian*; do [[ -f $f ]] && chmod -x "$f"; done
 # Privacy audit before the 4.0 release (2026-10-03): nothing in the image may phone home on its own.

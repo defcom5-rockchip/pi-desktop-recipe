@@ -183,7 +183,7 @@ class Daemon:
             return
         try:
             self.inhibit_cookie = self.session.Inhibit('(susu)', APP_ID, 0,
-                                                       'Screen blanking is off on Pi-Desktop: the display cannot '
+                                                       'Screen blanking is off on Plaid Pi: the display cannot '
                                                        'resume at 4K@120 Hz; a screensaver runs instead', INHIBIT_IDLE)
             log(f'holding idle inhibitor {self.inhibit_cookie} (GNOME will not blank)')
         except GLib.Error as e:
@@ -289,7 +289,7 @@ class Daemon:
                # the global mpv.conf has video-sync=display-resample: at 4K@120 Hz that re-renders every vsync
                # (measured on a DVD: GPU 93 % vs 43 %), hours on end for a screensaver. Pace by the clock instead.
                '--video-sync=audio',
-               '--wayland-app-id=pidesktop-screensaver', '--title=Pi-Desktop Screensaver',
+               '--wayland-app-id=pidesktop-screensaver', '--title=Plaid Pi Screensaver',
                *map(str, files)]
         try:
             # mpv is --really-quiet, but the Rockchip decoder library still chats on stderr; keep the journal clean
@@ -378,7 +378,7 @@ class Daemon:
             FIRST_RUN_MARK.parent.mkdir(parents=True, exist_ok=True)
             FIRST_RUN_MARK.touch()
             subprocess.Popen(['notify-send', '-a', 'Screensaver', '-i', 'preferences-desktop-screensaver',
-                              'Screen blanking is off on Pi-Desktop',
+                              'Screen blanking is off on Plaid Pi',
                               'This machine cannot bring the display back after a blank at 4K@120 Hz, so a '
                               'screensaver runs instead. Choose it and set the delay in Settings ▸ Power.'])
         except OSError:

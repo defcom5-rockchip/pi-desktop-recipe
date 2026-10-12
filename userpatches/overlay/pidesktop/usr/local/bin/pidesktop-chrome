@@ -11,7 +11,7 @@ TITLE="Google Chrome"
 
 if [[ ! -x $CHROME ]]; then
 	zenity --question --title="$TITLE" --icon=web-browser --width=440 --ok-label="Install" --cancel-label="Not Now" \
-		--text="Google Chrome isn't installed yet.\n\nPi-Desktop can't include Chrome, but it can download it from Google for you (about 120 MB). After that it updates with the rest of your software." \
+		--text="Google Chrome isn't installed yet.\n\nPlaid Pi can't include Chrome, but it can download it from Google for you (about 120 MB). After that it updates with the rest of your software." \
 		|| exit 0
 	# every output line becomes the dialog's status text ("# ..."), trimmed to fit. The installer prints nothing until
 	# pkexec has the password, so the first text says what is really happening then. --no-cancel stays: closing the

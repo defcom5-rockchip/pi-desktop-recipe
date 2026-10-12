@@ -3,7 +3,7 @@
  "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
 <!-- Pi-Desktop: gives the password prompt for the Google Chrome installer a clear message (pkexec). -->
 <policyconfig>
-  <vendor>Pi-Desktop</vendor>
+  <vendor>Plaid Pi</vendor>
   <action id="org.pidesktop.install-chrome">
     <description>Install Google Chrome</description>
     <message>Authentication is required to download and install Google Chrome from Google</message>

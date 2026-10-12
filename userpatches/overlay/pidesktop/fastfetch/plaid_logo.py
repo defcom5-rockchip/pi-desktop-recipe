@@ -40,7 +40,7 @@ def sgr(fg, bg): return f'\x1b[38;2;{fg[0]};{fg[1]};{fg[2]}m\x1b[48;2;{bg[0]};{b
 lines = [''.join(sgr(px[2*r, c], px[2*r+1, c]) for c in range(W)) + '\x1b[0m' for r in range(H)]
 def centre(s): return ' ' * max(0, (W - len(s)) // 2) + s
 lines.append('')
-lines.append(f'\x1b[1;38;2;232;80;32m{centre("PI DESKTOP 3.0")}\x1b[0m')
+lines.append(f'\x1b[1;38;2;232;80;32m{centre("PLAID PI 5.0")}\x1b[0m')
 lines.append(f'\x1b[38;2;243;226;184m{centre("- P L A I D -")}\x1b[0m')
 open(OUT, 'w').write('\n'.join(lines) + '\n')
 # PNG preview of the swatch (10x) so it can be eyeballed without a terminal
