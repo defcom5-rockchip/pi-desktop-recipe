@@ -127,7 +127,7 @@ cat > /etc/X11/xorg.conf.d/10-rockchip-kms.conf <<-'X'
 	EndSection
 X
 
-# ---------------------------------------------------------------- decode: patched MPP (+ matching -dev), rockchip-vaapi 2.2.0, mpv 0.41 + our conf
+# ---------------------------------------------------------------- decode: patched MPP (+ matching -dev), rockchip-vaapi 3.0.0, mpv 0.41 + our conf
 apt-get install -y -qq --no-install-recommends libva2 libva-drm2 libva-wayland2 libva-x11-2 vainfo libdrm2 mpv ffmpeg v4l-utils >/dev/null || warn "media base install had errors"
 if ls "$OV"/debs/media/*.deb >/dev/null 2>&1; then
 	apt-get install -y -qq --allow-downgrades "$OV"/debs/media/*.deb >/dev/null && log "media debs: $(cd "$OV"/debs/media && ls *.deb | sed 's/_arm64.deb//' | tr '\n' ' ')" || warn "media overlay debs failed"

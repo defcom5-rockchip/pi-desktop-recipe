@@ -44,7 +44,7 @@
     { "type": "command", "key": "MALI", "text": "echo \"libmali $(dpkg-query -W -f='${binary:Package} ${Version}\\n' 'libmali-valhall-*' 2>/dev/null | head -1 | sed 's/libmali-valhall-//; s/^g610-//') · OpenGL ES 3.2\"" },
 
     { "type": "custom", "format": "{#1;38;2;232;80;32}// VIDEO - AUDIO //" },
-    { "type": "command", "key": "VAAPI", "text": "echo \"rockchip-vaapi $(dpkg-query -W -f='${Version}' rockchip-vaapi 2>/dev/null) · HEVC/VP9/H.264 HW\"" },
+    { "type": "command", "key": "VAAPI", "text": "echo \"rockchip-vaapi $(dpkg-query -W -f='${Version}' rockchip-vaapi 2>/dev/null) · HEVC/VP9/AV1/H.264 HW\"" },
     { "type": "command", "key": "MPP",   "text": "dpkg-query -W -f='${Version}' librockchip-mpp1 2>/dev/null | sed 's/+ds.*//'" },
     { "type": "command", "key": "AUDIO", "text": "echo \"PipeWire $(pipewire --version 2>/dev/null | awk 'NR==2{print $4}') · WirePlumber $(wireplumber --version 2>/dev/null | awk 'NR==2{print $4}')\"" },
     { "type": "sound",   "key": "SINK" },
