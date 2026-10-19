@@ -1,0 +1,30 @@
+# Pi Desktop: browsers, mail and editors come from their vendors, never from Armbian's rebranded mirror copies.
+# Order matters: for a version two archives both carry, apt uses the FIRST matching record, so the vendors'
+# 1001 records come before Armbian's 1 (apt_preferences(5)).
+Package: chromium chromium-*
+Pin: release o=LP-PPA-xtradeb-apps
+Pin-Priority: 1001
+
+Package: firefox firefox-* thunderbird thunderbird-*
+Pin: release o=LP-PPA-mozillateam
+Pin-Priority: 1001
+
+Package: google-chrome-stable
+Pin: release o=Google LLC
+Pin-Priority: 1001
+
+Package: codium
+Pin: origin download.vscodium.com
+Pin-Priority: 1001
+
+Package: code microsoft-edge-stable
+Pin: origin packages.microsoft.com
+Pin-Priority: 1001
+
+Package: chromium chromium-* firefox firefox-* firefox-esr firefox-l10n-* thunderbird thunderbird-* google-chrome-stable code codium microsoft-edge-stable
+Pin: release o=Armbian
+Pin-Priority: 1
+
+Package: firefox chromium chromium-browser thunderbird
+Pin: release o=Ubuntu*
+Pin-Priority: -1

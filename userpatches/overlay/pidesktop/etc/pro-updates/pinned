@@ -1,0 +1,11 @@
+# Pro Updates: packages it must never offer to swap for a Flathub build. These are the
+# hardware-tuned builds on Pi-Desktop (VA-API/MPP video, Mali GPU, patched audio stack);
+# a generic Flathub build would lose hardware video decode or the GPU. Their own
+# repositories' updates still apply. One name per line (the part before the first "-").
+chromium
+firefox
+mpv
+gstreamer1.0
+rhythmbox
+pipewire
+wireplumber

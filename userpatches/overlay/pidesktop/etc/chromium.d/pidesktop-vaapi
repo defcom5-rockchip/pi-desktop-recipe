@@ -1,4 +1,4 @@
-# Pi-Desktop: Chromium 153 (xtradeb VA-API build) -> rockchip-vaapi -> MPP. Verified on BSP 6.1 for 8-bit and 10-bit VP9 (2026-09-21)
+# Pi-Desktop: Chromium 155 (xtradeb VA-API build) -> rockchip-vaapi -> MPP. Verified on BSP 6.1 for 8-bit and 10-bit VP9 (2026-09-21)
 # and 8-bit HEVC on Plaid (2026-09-22). --render-node-override: rkr7.2 registers an RKNPU render node (renderD129) and Chromium's
 # VA-API setup otherwise picks it ("Preferred drm_render_node not found, picking rknpu") -> no hardware decode.
 export CHROMIUM_FLAGS="$CHROMIUM_FLAGS --ozone-platform-hint=wayland --render-node-override=/dev/dri/renderD128 --enable-features=AcceleratedVideoDecoder,AcceleratedVideoDecodeLinuxGL,AcceleratedVideoDecodeLinuxZeroCopyGL,PlatformHEVCDecoderSupport"

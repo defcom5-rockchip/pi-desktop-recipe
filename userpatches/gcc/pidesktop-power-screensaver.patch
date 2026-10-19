@@ -1,5 +1,5 @@
 Description: Power panel: Screensaver group replaces Automatic Screen Blank (Pi-Desktop)
- Pi-Desktop uses a screensaver instead of blanking the screen. The former blank-screen
+ Plaid Pi uses a screensaver instead of blanking the screen. The former blank-screen
  group now shows the settings of the pidesktop-screensaver user service: file, delay,
  lock, folder and preview.
  Hidden automatically when the org.pidesktop.screensaver schema (or a key it needs) is absent.
@@ -17,7 +17,7 @@ diff -Naur gnome-control-center-50.3/panels/power/cc-power-panel.blp work/panels
 -                title: _("Automatic Screen _Blank");
 -                subtitle: _("Turn the screen off after a period of inactivity");
 +              title: _("Screensaver");
-+              description: _("Pi-Desktop uses a screensaver instead of blanking the screen.");
++              description: _("Plaid Pi uses a screensaver instead of blanking the screen.");
 +
 +              Adw.ComboRow screensaver_file_row {
 +                title: _("_Screensaver");

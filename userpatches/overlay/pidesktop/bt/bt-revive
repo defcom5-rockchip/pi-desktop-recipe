@@ -6,6 +6,7 @@
 # bluetooth-hciattach.service, whose script already power-cycles, attaches and verifies. So: restart it.
 log(){ echo "[bt-revive] $*"; logger -t bt-revive "$*"; }
 ok(){ local m; m=$(hciconfig hci0 2>/dev/null | awk '/BD Address/{print $3}'); [[ -n $m && $m != "00:00:00:00:00:00" ]]; }
+[ -e /run/pidesktop-bt-absent ] && { log "$(cat /run/pidesktop-bt-absent) — nothing to revive"; exit 1; }
 log "teardown"; hciconfig hci0 down 2>/dev/null
 for attempt in 1 2; do
 	log "attempt $attempt: restart bluetooth-hciattach.service"

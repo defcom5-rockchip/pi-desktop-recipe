@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
-From: defcom5-rockchip <defcom5-rockchip@users.noreply.github.com>
+From: defcom5-rockchip <286489597+defcom5-rockchip@users.noreply.github.com>
 Date: Fri, 26 Jun 2026 12:23:37 -0700
-Subject: [PATCH 1/5] drm/rockchip: vop2: reject AFBC modifier (no-flicker
+Subject: [PATCH] drm/rockchip: vop2: reject AFBC modifier (no-flicker
  4K@120 variant)
 
 VOP2 can't decompress AFBC scanout fast enough at 4K@120Hz -> windowed
@@ -14,6 +14,8 @@ composites linear -> linear scanout -> no flicker, display intact.
 Confirmed on hardware 2026-06-25.
 
 (cherry picked from commit 472a90918a76d5d3cf8717ef46e53e0f9cf0576a)
+
+Assisted-by: LLM
 ---
  drivers/gpu/drm/rockchip/rockchip_drm_vop2.c | 12 ++++++++++++
  1 file changed, 12 insertions(+)

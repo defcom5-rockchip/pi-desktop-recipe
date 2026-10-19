@@ -1,0 +1,429 @@
+Description: hwdec/dmabuf_interop_gl: cope with drivers that cannot import planes as normalised textures
+ Seen on Arm's proprietary Mali GL driver (libmali g24p0 / g29p1) on RK3588:
+  - DRM_FORMAT_R16 (the luma plane of P010) imports as GL_R16UI, an integer
+    texture, which a float sampler reads as 0: 10-bit video drew near-black.
+    A luma plane imported as a one-channel integer format of its own depth
+    (R16UI, R8UI) is re-wrapped as an integer texture (NEAREST filters), and
+    the renderers sample it as one; no copy. Other planes imported as integer
+    textures are copied into a normalised texture of the same texel size with
+    glCopyImageSubData, because they go through the chroma scaler.
+  - DRM_FORMAT_GR88 (the chroma plane of NV12) is refused with EGL_BAD_MATCH.
+    It is imported as R16 (the same bytes) and copied into an RG8 texture.
+    GR88 only: the raw copy would swap RG88's channels.
+  - vo_gpu: such a plane is only known on the first map, after vo_gpu chose
+    voluntary dumb mode (e.g. --profile=fast), which would sample it
+    unfiltered at output size. vo_gpu now sets use_integer_conversion when a
+    mapped hwdec plane is an integer texture and re-checks its features before
+    the next frame (at most one frame renders unfiltered).
+ Decided once per plane on the first map. Drivers that import these formats as
+ normalised textures (Mesa) take the old path after one extra query.
+ glCopyImageSubData is used only where GL 4.3 / GLES 3.2 or the ARB/EXT/OES
+ copy_image extension provides it.
+ .
+ Known limit: gpu-next with --scaler-resizes-only=no and a crop/pan/zoom can
+ route the integer luma plane to a linear-filtered scaler; libplacebo then logs
+ "Failed dispatching scaler.. disabling" and falls back to a simpler scaler.
+ .
+ Written with Claude (Anthropic): the LLM drafted the code after measuring the
+ driver's behaviour with stand-alone EGL probes and revised it after two
+ rounds of AI review; the maintainer tested it on an Orange Pi 5B (10-bit
+ HDR10 4K60 zero-copy at about 2 % dropped frames; pictures within one 8-bit
+ step of copy-back decoding, no bias; 8-bit identical).
+Author: defcom5-rockchip <286489597+defcom5-rockchip@users.noreply.github.com>
+Origin: vendor, Pi-Desktop
+Forwarded: not-yet
+Last-Update: 2026-10-09
+---
+diff --git a/video/out/gpu/video.c b/video/out/gpu/video.c
+index c0a1be8..eabf917 100644
+--- a/video/out/gpu/video.c
++++ b/video/out/gpu/video.c
+@@ -176,6 +176,7 @@ struct gl_video {
+     bool has_alpha;
+     char color_swizzle[5];
+     bool use_integer_conversion;
++    bool integer_reinit;        // re-check features: a hwdec plane is integer
+ 
+     struct video_image image;
+ 
+@@ -3757,6 +3758,20 @@ static bool pass_upload_image(struct gl_video *p, struct mp_image *mpi, uint64_t
+                     .tex = tex[n],
+                     .flipped = layout.params.vflip,
+                 };
++                // Some hwdec interops can only decide on the first map that a
++                // plane is an integer texture. Dumb mode would sample it
++                // unfiltered: leave voluntary dumb mode from the next frame.
++                if (!p->use_integer_conversion && tex[n] &&
++                    tex[n]->params.format->ctype == RA_CTYPE_UINT)
++                {
++                    p->use_integer_conversion = true;
++                    if (p->dumb_mode && !p->forced_dumb_mode) {
++                        p->integer_reinit = true;
++                    } else if (p->forced_dumb_mode) {
++                        MP_WARN(p, "Integer texture from the hardware decoder "
++                                   "in dumb mode: scaling will be unfiltered.\n");
++                    }
++                }
+             }
+         } else {
+             MP_FATAL(p, "Mapping hardware decoded surface failed.\n");
+@@ -4204,7 +4219,10 @@ static void gl_video_update_options(struct gl_video *p)
+     if (m_config_cache_update(p->opts_cache)) {
+         gl_lcms_update_options(p->cms);
+         reinit_from_options(p);
++    } else if (p->integer_reinit) {
++        reinit_from_options(p);
+     }
++    p->integer_reinit = false;
+ 
+     if (mp_csp_equalizer_state_changed(p->video_eq))
+         p->output_tex_valid = false;
+diff --git a/video/out/hwdec/dmabuf_interop_gl.c b/video/out/hwdec/dmabuf_interop_gl.c
+index 6adddb7..a3b4a5f 100644
+--- a/video/out/hwdec/dmabuf_interop_gl.c
++++ b/video/out/hwdec/dmabuf_interop_gl.c
+@@ -24,6 +24,21 @@
+ typedef void* GLeglImageOES;
+ typedef void *EGLImageKHR;
+ 
++// Texture formats used by the copy fallback (GLES 3.0 / GL_EXT_texture_norm16).
++#ifndef GL_TEXTURE_INTERNAL_FORMAT
++#define GL_TEXTURE_INTERNAL_FORMAT 0x1003
++#endif
++#ifndef GL_R8UI
++#define GL_R8UI   0x8232
++#define GL_RG8UI  0x8238
++#define GL_R16UI  0x8234
++#define GL_RG16UI 0x823A
++#endif
++#ifndef GL_R16
++#define GL_R16    0x822A
++#define GL_RG16   0x822C
++#endif
++
+ // Any EGL_EXT_image_dma_buf_import definitions used in this source file.
+ #define EGL_LINUX_DMA_BUF_EXT             0x3270
+ #define EGL_LINUX_DRM_FOURCC_EXT          0x3271
+@@ -37,8 +52,6 @@ typedef void *EGLImageKHR;
+ #define EGL_DMA_BUF_PLANE2_OFFSET_EXT     0x3279
+ #define EGL_DMA_BUF_PLANE2_PITCH_EXT      0x327A
+ 
+-
+-// Any EGL_EXT_image_dma_buf_import definitions used in this source file.
+ #define EGL_DMA_BUF_PLANE3_FD_EXT         0x3440
+ #define EGL_DMA_BUF_PLANE3_OFFSET_EXT     0x3441
+ #define EGL_DMA_BUF_PLANE3_PITCH_EXT      0x3442
+@@ -64,8 +77,88 @@ struct vaapi_gl_mapper_priv {
+     void (EGLAPIENTRY *EGLImageTargetTexture2DOES)(GLenum, GLeglImageOES);
+     void (EGLAPIENTRY *EGLImageTargetTexStorageEXT)(GLenum, GLeglImageOES,
+                                                     const GLint *);
++
++    // Fallbacks for drivers whose dma-buf import is unusable for direct
++    // sampling as a normalised texture (seen on Arm's proprietary Mali driver):
++    //  - a plane the driver imports as an INTEGER texture (R16 as GL_R16UI,
++    //    which samples as 0 through a float sampler): the luma plane is
++    //    re-wrapped as an integer texture (uint_fmt) and sampled as such by the
++    //    renderers, no copy; other planes are copied into a normalised texture
++    //    of the same texel size, because they go through the chroma scaler;
++    //  - a two-channel 8-bit plane (GR88) refused with EGL_BAD_MATCH is
++    //    imported as one 16-bit channel (R16, the same bytes) and copied into
++    //    an RG8 texture.
++    // Copies use glCopyImageSubData. Decided once per plane, on the first map.
++    void (EGLAPIENTRY *CopyImageSubData)(GLuint, GLenum, GLint, GLint, GLint,
++                                         GLint, GLuint, GLenum, GLint, GLint,
++                                         GLint, GLint, GLsizei, GLsizei,
++                                         GLsizei);
++    void (EGLAPIENTRY *GetTexLevelParameteriv)(GLenum, GLint, GLenum, GLint *);
++    int copy_fmt[AV_DRM_MAX_PLANES];     // 0 undecided, -1 direct, else GL fmt
++    const struct ra_format *uint_fmt[AV_DRM_MAX_PLANES]; // direct as integer
++    bool import_r16[AV_DRM_MAX_PLANES];  // GR88 imported as R16
++    GLuint copy_src[AV_DRM_MAX_PLANES];  // per-frame texture of the import
++    int alloc_fmt[AV_DRM_MAX_PLANES], alloc_w[AV_DRM_MAX_PLANES],
++        alloc_h[AV_DRM_MAX_PLANES];      // storage of gl_textures[n]
+ };
+ 
++// Normalised format with the same texel size as an integer one, or 0.
++static GLenum copy_target(GLint internal)
++{
++    switch (internal) {
++    case GL_R8UI:   return GL_R8;
++    case GL_RG8UI:  return GL_RG8;
++    case GL_R16UI:  return GL_R16;
++    case GL_RG16UI: return GL_RG16;
++    }
++    return 0;
++}
++
++static void target_upload_format(GLenum fmt, GLenum *format, GLenum *type)
++{
++    *format = (fmt == GL_R8 || fmt == GL_R16) ? GL_RED : GL_RG;
++    *type = (fmt == GL_R16 || fmt == GL_RG16) ? GL_UNSIGNED_SHORT
++                                              : GL_UNSIGNED_BYTE;
++}
++
++// (Re)create the ra_tex wrapper of plane n around its GL texture. An integer
++// texture (uint_fmt) must use NEAREST filters to be complete.
++static bool wrap_plane_tex(struct ra_hwdec_mapper *mapper, int n)
++{
++    struct dmabuf_interop_priv *p_mapper = mapper->priv;
++    struct vaapi_gl_mapper_priv *p = p_mapper->interop_mapper_priv;
++    GL *gl = ra_gl_get(mapper->ra);
++    bool integer = !!p->uint_fmt[n];
++
++    ra_tex_free(mapper->ra, &p_mapper->tex[n]);
++
++    gl->BindTexture(GL_TEXTURE_2D, p->gl_textures[n]);
++    gl->TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
++                      integer ? GL_NEAREST : GL_LINEAR);
++    gl->TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER,
++                      integer ? GL_NEAREST : GL_LINEAR);
++    gl->TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
++    gl->TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
++    gl->BindTexture(GL_TEXTURE_2D, 0);
++
++    struct ra_tex_params params = {
++        .dimensions = 2,
++        .w = mp_image_plane_w(&p_mapper->layout, n),
++        .h = mp_image_plane_h(&p_mapper->layout, n),
++        .d = 1,
++        .format = integer ? p->uint_fmt[n] : p->planes[n],
++        .render_src = true,
++        .src_linear = !integer,
++    };
++
++    if (params.format->ctype != (integer ? RA_CTYPE_UINT : RA_CTYPE_UNORM))
++        return false;
++
++    p_mapper->tex[n] = ra_create_wrapped_tex(mapper->ra, &params,
++                                             p->gl_textures[n]);
++    return !!p_mapper->tex[n];
++}
++
+ static bool gl_create_textures(struct ra_hwdec_mapper *mapper)
+ {
+     struct dmabuf_interop_priv *p_mapper = mapper->priv;
+@@ -74,29 +167,7 @@ static bool gl_create_textures(struct ra_hwdec_mapper *mapper)
+     GL *gl = ra_gl_get(mapper->ra);
+     gl->GenTextures(AV_DRM_MAX_PLANES, p->gl_textures);
+     for (int n = 0; n < p_mapper->num_planes; n++) {
+-        gl->BindTexture(GL_TEXTURE_2D, p->gl_textures[n]);
+-        gl->TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+-        gl->TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+-        gl->TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+-        gl->TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+-        gl->BindTexture(GL_TEXTURE_2D, 0);
+-
+-        struct ra_tex_params params = {
+-            .dimensions = 2,
+-            .w = mp_image_plane_w(&p_mapper->layout, n),
+-            .h = mp_image_plane_h(&p_mapper->layout, n),
+-            .d = 1,
+-            .format = p->planes[n],
+-            .render_src = true,
+-            .src_linear = true,
+-        };
+-
+-        if (params.format->ctype != RA_CTYPE_UNORM)
+-            return false;
+-
+-        p_mapper->tex[n] = ra_create_wrapped_tex(mapper->ra, &params,
+-                                                 p->gl_textures[n]);
+-        if (!p_mapper->tex[n])
++        if (!wrap_plane_tex(mapper, n))
+             return false;
+     }
+ 
+@@ -112,6 +183,7 @@ static void gl_delete_textures(const struct ra_hwdec_mapper *mapper)
+     gl->DeleteTextures(AV_DRM_MAX_PLANES, p->gl_textures);
+     for (int n = 0; n < AV_DRM_MAX_PLANES; n++) {
+         p->gl_textures[n] = 0;
++        p->alloc_fmt[n] = p->alloc_w[n] = p->alloc_h[n] = 0;
+         ra_tex_free(mapper->ra, &p_mapper->tex[n]);
+     }
+ }
+@@ -138,6 +210,27 @@ static bool vaapi_gl_mapper_init(struct ra_hwdec_mapper *mapper,
+             (void *)eglGetProcAddress("glEGLImageTargetTexStorageEXT");
+     }
+ 
++    // glCopyImageSubData: core in GL 4.3 and GLES 3.2, else an extension.
++    // eglGetProcAddress may hand back a stub for anything else, so check first.
++    GL *gl = ra_gl_get(mapper->ra);
++    const char *copy_name = NULL;
++    if (gl->es) {
++        if (gl->es >= 320)
++            copy_name = "glCopyImageSubData";
++        else if (gl_check_extension(gl->extensions, "GL_EXT_copy_image"))
++            copy_name = "glCopyImageSubDataEXT";
++        else if (gl_check_extension(gl->extensions, "GL_OES_copy_image"))
++            copy_name = "glCopyImageSubDataOES";
++    } else if (gl->version >= 430 ||
++               gl_check_extension(gl->extensions, "GL_ARB_copy_image")) {
++        copy_name = "glCopyImageSubData";
++    }
++    if (copy_name)
++        p->CopyImageSubData = (void *)eglGetProcAddress(copy_name);
++    // From the GL function table (GL 1.0 / GLES 3.1+): without it the import
++    // is used as it comes, as before.
++    p->GetTexLevelParameteriv = gl->GetTexLevelParameteriv;
++
+     if (!p->CreateImageKHR || !p->DestroyImageKHR ||
+         (!p->EGLImageTargetTexture2DOES && !p->EGLImageTargetTexStorageEXT)) {
+         return false;
+@@ -292,19 +385,140 @@ static bool vaapi_gl_map(struct ra_hwdec_mapper *mapper,
+             ADD_ATTRIB(EGL_HEIGHT, p_mapper->tex[n]->params.h);
+             ADD_PLANE_ATTRIBS(0);
+ 
++            if (p->import_r16[n])
++                attribs[1] = DRM_FORMAT_R16;
+             p->images[n] = p->CreateImageKHR(eglGetCurrentDisplay(),
+                 EGL_NO_CONTEXT, EGL_LINUX_DMA_BUF_EXT, NULL, attribs);
++            EGLint err = p->images[n] ? EGL_SUCCESS : eglGetError();
++            // GR88 only: the raw copy puts byte 0 into R, which is G for RG88.
++            if (!p->images[n] && format[j] == DRM_FORMAT_GR88 &&
++                !p->import_r16[n] && p->CopyImageSubData && err == EGL_BAD_MATCH)
++            {
++                // Same bytes, one 16-bit channel per texel.
++                attribs[1] = DRM_FORMAT_R16;
++                p->images[n] = p->CreateImageKHR(eglGetCurrentDisplay(),
++                    EGL_NO_CONTEXT, EGL_LINUX_DMA_BUF_EXT, NULL, attribs);
++                if (p->images[n]) {
++                    MP_VERBOSE(mapper, "Plane %d: driver cannot import GR88, "
++                               "importing as R16 and copying into RG8\n", n);
++                    p->import_r16[n] = true;
++                    p->copy_fmt[n] = GL_RG8;
++                } else {
++                    err = eglGetError();
++                }
++            }
+             if (!p->images[n]) {
+                 mp_msg(mapper->log, probing ? MSGL_DEBUG : MSGL_ERR,
+-                    "Failed to import surface in EGL: %u\n", eglGetError());
++                    "Failed to import surface in EGL: %u\n", (unsigned)err);
+                 return false;
+             }
+ 
+-            gl->BindTexture(GL_TEXTURE_2D, p->gl_textures[n]);
+-            if (p->EGLImageTargetTexStorageEXT) {
+-                p->EGLImageTargetTexStorageEXT(GL_TEXTURE_2D, p->images[n], NULL);
++            if (p->copy_fmt[n] == 0 || p->copy_fmt[n] > 0) {
++                // Attach the import to its own texture: either to inspect
++                // it (first map) or as the copy source.
++                gl->GenTextures(1, &p->copy_src[n]);
++                gl->BindTexture(GL_TEXTURE_2D, p->copy_src[n]);
++                // A copy source must be complete: the default minification
++                // filter wants mipmaps this single-level texture lacks.
++                gl->TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
++                gl->TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
++                if (p->EGLImageTargetTexStorageEXT) {
++                    p->EGLImageTargetTexStorageEXT(GL_TEXTURE_2D, p->images[n],
++                                                   NULL);
++                } else {
++                    p->EGLImageTargetTexture2DOES(GL_TEXTURE_2D, p->images[n]);
++                }
++                if (p->copy_fmt[n] == 0) {
++                    GLint internal = 0;
++                    if (p->GetTexLevelParameteriv) {
++                        p->GetTexLevelParameteriv(GL_TEXTURE_2D, 0,
++                            GL_TEXTURE_INTERNAL_FORMAT, &internal);
++                    }
++                    GLenum target = copy_target(internal);
++                    const struct ra_format *ufmt = NULL;
++                    if (target && n == 0) {
++                        // The luma plane is sampled 1:1, and both renderers
++                        // read integer textures with the right scaling, so it
++                        // needs no copy. Chroma planes go through the chroma
++                        // scaler, which wants a normalised texture: copy those.
++                        // Only a one-channel integer format of the plane's own
++                        // depth qualifies.
++                        const char *name = internal == GL_R16UI ? "r16ui" :
++                                           internal == GL_R8UI ? "r8ui" : NULL;
++                        const struct ra_format *f =
++                            name ? ra_find_named_format(mapper->ra, name) : NULL;
++                        if (f && p->planes[n]->num_components == 1 &&
++                            f->component_depth[0] == p->planes[n]->component_depth[0])
++                            ufmt = f;
++                    }
++                    if (ufmt) {
++                        p->uint_fmt[n] = ufmt;
++                        if (wrap_plane_tex(mapper, n)) {
++                            MP_VERBOSE(mapper, "Plane %d: driver imports it as "
++                                       "an integer texture (0x%04x), sampling "
++                                       "it as one\n", n, (unsigned)internal);
++                            target = 0;
++                        } else {
++                            // Back to the normalised wrapper; copy below.
++                            p->uint_fmt[n] = NULL;
++                            ufmt = NULL;
++                            if (!wrap_plane_tex(mapper, n))
++                                return false;
++                        }
++                    }
++                    if (ufmt) {
++                        // sampled directly as an integer texture
++                    } else if (target && !p->CopyImageSubData) {
++                        MP_WARN(mapper, "Plane %d: driver imports it as an "
++                                "integer texture (0x%04x) and glCopyImageSubData "
++                                "is unavailable: it will draw black\n", n,
++                                (unsigned)internal);
++                        target = 0;
++                    } else if (target) {
++                        MP_VERBOSE(mapper, "Plane %d: driver imports it as an "
++                                   "integer texture (0x%04x), copying into a "
++                                   "normalised texture (0x%04x)\n", n,
++                                   (unsigned)internal, (unsigned)target);
++                    }
++                    p->copy_fmt[n] = target ? (int)target : -1;
++                }
++            }
++
++            if (p->copy_fmt[n] > 0) {
++                int w = p_mapper->tex[n]->params.w;
++                int h = p_mapper->tex[n]->params.h;
++                gl->BindTexture(GL_TEXTURE_2D, p->gl_textures[n]);
++                if (p->alloc_fmt[n] != p->copy_fmt[n] || p->alloc_w[n] != w ||
++                    p->alloc_h[n] != h)
++                {
++                    GLenum ufmt, utype;
++                    target_upload_format(p->copy_fmt[n], &ufmt, &utype);
++                    // Storage only: no pixel unpack buffer may be bound.
++                    if (gl->BindBuffer)
++                        gl->BindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
++                    gl->TexImage2D(GL_TEXTURE_2D, 0, p->copy_fmt[n], w, h, 0,
++                                   ufmt, utype, NULL);
++                    p->alloc_fmt[n] = p->copy_fmt[n];
++                    p->alloc_w[n] = w;
++                    p->alloc_h[n] = h;
++                }
++                p->CopyImageSubData(p->copy_src[n], GL_TEXTURE_2D, 0, 0, 0, 0,
++                                    p->gl_textures[n], GL_TEXTURE_2D, 0, 0, 0,
++                                    0, w, h, 1);
+             } else {
+-                p->EGLImageTargetTexture2DOES(GL_TEXTURE_2D, p->images[n]);
++                if (p->copy_src[n]) {
++                    gl->DeleteTextures(1, &p->copy_src[n]);
++                    p->copy_src[n] = 0;
++                }
++                gl->BindTexture(GL_TEXTURE_2D, p->gl_textures[n]);
++                if (p->EGLImageTargetTexStorageEXT) {
++                    p->EGLImageTargetTexStorageEXT(GL_TEXTURE_2D, p->images[n],
++                                                   NULL);
++                } else {
++                    p->EGLImageTargetTexture2DOES(GL_TEXTURE_2D, p->images[n]);
++                }
++                // Backed by the EGL image again, not by copy storage.
++                p->alloc_fmt[n] = p->alloc_w[n] = p->alloc_h[n] = 0;
+             }
+ 
+             mapper->tex[n] = p_mapper->tex[n];
+@@ -328,7 +542,11 @@ static void vaapi_gl_unmap(struct ra_hwdec_mapper *mapper)
+         gl_delete_textures(mapper);
+     }
+ 
++    GL *gl = ra_gl_get(mapper->ra);
+     for (int n = 0; n < AV_DRM_MAX_PLANES; n++) {
++        if (p->copy_src[n])
++            gl->DeleteTextures(1, &p->copy_src[n]);
++        p->copy_src[n] = 0;
+         if (p->images[n])
+             p->DestroyImageKHR(eglGetCurrentDisplay(), p->images[n]);
+         p->images[n] = 0;

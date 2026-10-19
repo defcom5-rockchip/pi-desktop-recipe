@@ -1,5 +1,5 @@
 #!/bin/bash
-# Rebuild Pi-Desktop's patched GNOME Settings (gnome-control-center 1:50.3-0ubuntu0.2+pd3.3) with the new
+# Rebuild Pi-Desktop's patched GNOME Settings (gnome-control-center 1:50.3-0ubuntu0.2+pd3.4) with the Plaid Pi
 # Screensaver wording. Builds in an Ubuntu 26.04 "workshop" folder (/srv/pd3-build) and creates it first if it isn't
 # there (first run ~10 min: download + build; later runs ~2 min). Where the workshop lives:
 #   Plaid booted from SD  -> on the spare eMMC (mounted for the build, unmounted at the end; its OS is not changed)
@@ -12,11 +12,11 @@ set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 exec > >(tee "$HERE/rebuild-settings.log") 2>&1
 PATCH="$HERE/pidesktop-power-screensaver.patch"
-UBU="1:50.3-0ubuntu0.2"; VER="$UBU+pd3.3"
+UBU="1:50.3-0ubuntu0.2"; VER="$UBU+pd3.4"
 M=/mnt/emmc; C=$M/srv/pd3-build; SRC=/root/gcc/gnome-control-center-50.3; DEV=/dev/mmcblk0p1
 MIRROR=http://ports.ubuntu.com/ubuntu-ports
 [[ -f $PATCH ]] || { echo "E: $PATCH missing"; exit 1; }
-ON_EMMC=0; [[ "$(findmnt -no SOURCE /)" == "$DEV" ]] && { ON_EMMC=1; M=/; C=/srv/pd3-build; echo "=== Plaid runs from the eMMC: workshop is $C on this system"; }
+ON_EMMC=0; [[ "$(findmnt -no SOURCE /)" == "$DEV" ]] && { ON_EMMC=1; M=/; C=/srv/pd3-build; echo "=== running from the eMMC: workshop is $C on this system"; }
 
 mounted_here=()
 cleanup() { for ((i=${#mounted_here[@]}-1; i>=0; i--)); do umount "${mounted_here[$i]}" 2>/dev/null; done; }
@@ -71,18 +71,19 @@ grep -q 'uses a screensaver instead of blanking the screen' panels/power/cc-powe
 dpkg-parsechangelog -S Version | grep -qF '$VER' || dch -b -v '$VER' --distribution resolute 'Pi-Desktop: Power panel shows a Screensaver group (screensaver service settings) in place of Automatic Screen Blank. Wording: Pi-Desktop uses a screensaver instead of blanking the screen.'
 echo \"version: \$(dpkg-parsechangelog -S Version)\"
 export DEB_BUILD_OPTIONS='nocheck parallel=8'
+rm -f debian/files   # stale entries from an earlier +pd3.x build make dpkg-genchanges fail after the debs are built
 dpkg-buildpackage -b -uc -us -nc 2>&1 | tee /root/gcc/build.log"
 rc=$?
 
 n=0
 for p in gnome-control-center gnome-control-center-data gnome-control-center-faces; do
-	f=$(ls $C/root/gcc/${p}_*pd3.3*.deb 2>/dev/null | head -1)
+	f=$(ls $C/root/gcc/${p}_*${VER#*+}*.deb 2>/dev/null | head -1)
 	[[ -n $f ]] && install -m0644 "$f" "$HERE/" && n=$((n+1))
 done
 echo
 if [[ $rc -eq 0 && $n -eq 3 ]]; then
-	echo "=== $(date +%T) DONE: 3 debs copied here:"; ls -la "$HERE"/*pd3.3*.deb
-	echo "Tell Claude it finished — nothing was installed on this system."
+	echo "=== $(date +%T) DONE: 3 debs copied here:"; ls -la "$HERE"/*${VER#*+}*.deb
+	echo "Done — nothing was installed on this system."
 else
 	echo "=== $(date +%T) FAILED (build rc=$rc, $n/3 debs). Last lines of the log:"; tail -15 $C/root/gcc/build.log 2>/dev/null
 fi

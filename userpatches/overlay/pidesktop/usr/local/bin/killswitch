@@ -1,0 +1,369 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 defcom5-rockchip (Pi-Desktop)
+"""Killswitch: list mounts, flag the stale (hung) ones, kill them.
+
+A network mount whose server went away makes everything that touches it hang (ls, Files, the file chooser...).
+This tool never touches a mount from its own process: every probe is a `stat -f` in a child with a hard timeout,
+so a hung mount shows up as STALE instead of freezing the window. Kill on a network mount is one `umount -f -l`
+through pkexec (force aborts the requests stuck on the dead server, lazy detaches the path), and only that mount:
+an automount trigger underneath stays, so the share comes back on the next access. Mounts under /media, /mnt and
+/run/media get a plain umount; GVfs mounts go through `gio`. Kill only acts on the topmost mount at a path.
+
+    killswitch            GTK window (GNOME)
+    killswitch --cli      the same table on the terminal (works over ssh when the desktop is wedged)
+    killswitch --kill MP  unmount MP the way the button does (over ssh without a desktop: sudo killswitch --kill MP)
+
+Only network mounts, GVfs network mounts and mounts under /media, /mnt and /run/media can be killed: the system's
+own filesystems (/, /boot, /usr, /home …) and your home folder are listed with --all but never offered.
+"""
+import argparse, json, os, subprocess, sys, threading, time
+
+PROBE_TIMEOUT = 3.0            # seconds before a mount is called stale
+STALE_REPROBE = 30             # seconds between probes of a mount already found stale
+NETWORK_FS = {"cifs", "smb3", "nfs", "nfs4", "fuse.sshfs", "fuse.gvfsd-fuse", "9p", "afpfs", "davfs", "fuse.rclone"}
+HIDE_FS = {"proc", "sysfs", "devtmpfs", "devpts", "tmpfs", "cgroup2", "cgroup", "pstore", "bpf", "debugfs", "tracefs",
+           "securityfs", "configfs", "hugetlbfs", "mqueue", "fusectl", "binfmt_misc", "autofs", "efivarfs", "rpc_pipefs",
+           "nsfs", "ramfs", "squashfs", "overlay", "fuse.portal"}
+USER_MOUNT_ROOTS = ("/media/", "/mnt/", "/run/media/")
+PROTECTED = {"/", "/boot", "/boot/efi", "/boot/firmware", "/usr", "/var", "/var/log", "/home", "/etc", "/opt",
+             "/root", "/srv", "/tmp", "/media", "/mnt", "/run/media"}
+UMOUNT = "/usr/bin/umount"
+CMD_TIMEOUT = 15               # listing commands (findmnt, gio, systemctl)
+
+
+def _run(cmd, timeout=CMD_TIMEOUT):
+    """A listing command that can neither hang nor raise: missing tools and timeouts give empty output."""
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+
+
+def _home_and_ancestors():
+    h = os.path.expanduser("~")
+    if os.environ.get("SUDO_USER"):                           # `sudo killswitch --kill`: protect the caller's home
+        try:
+            import pwd; h = pwd.getpwnam(os.environ["SUDO_USER"]).pw_dir
+        except (KeyError, ImportError): pass
+    h = os.path.normpath(h)
+    out = set()
+    while True:
+        out.add(h)
+        if h == "/": return out
+        h = os.path.dirname(h)
+
+
+def killable(row):
+    """Network and removable mounts only; never the system's own filesystems or the one holding your home."""
+    if row["kind"] == "gvfs": return True                     # only network GVfs mounts are listed (file:// skipped)
+    if row["fstype"] == "fuse.gvfsd-fuse": return False      # GVfs's FUSE root: all GVfs mounts at once (use their rows)
+    t = os.path.normpath(row["target"])
+    if t in PROTECTED or t in _home_and_ancestors(): return False
+    return row["fstype"] in NETWORK_FS or t.startswith(USER_MOUNT_ROOTS)
+
+
+def unit_escape(path):
+    """systemd-escape --path, without a process per mount."""
+    p = os.path.normpath(path).strip("/")
+    if not p: return "-"
+    out = []
+    for i, ch in enumerate(p):
+        if ch == "/": out.append("-")
+        elif (ch.isascii() and ch.isalnum()) or ch in ":_" or (ch == "." and i > 0): out.append(ch)
+        else: out.extend(f"\\x{b:02x}" for b in ch.encode())
+    return "".join(out)
+
+
+# ----------------------------------------------------------------------------- data
+def kernel_mounts(network_only=True):
+    out = _run(["findmnt", "-J", "-o", "ID,TARGET,SOURCE,FSTYPE"])
+    units = _run(["systemctl", "list-units", "--type=automount", "--state=active", "--no-legend", "--plain"]) if out else ""
+    active = {line.split()[0] for line in units.splitlines() if line.strip()}
+    rows = []
+    def walk(nodes):
+        for n in nodes:
+            fs = n.get("fstype") or ""
+            target = n.get("target") or ""
+            if target and fs not in HIDE_FS and (not network_only or fs in NETWORK_FS):
+                unit = unit_escape(target) + ".automount"
+                rows.append({"kind": "kernel", "id": str(n.get("id", "")), "target": target,
+                             "source": n.get("source") or "", "fstype": fs,
+                             "automount": unit if unit in active else ""})
+            walk(n.get("children") or [])
+    try: walk(json.loads(out or '{"filesystems":[]}').get("filesystems") or [])
+    except ValueError: pass
+    return rows
+
+
+def gvfs_mounts():
+    """User-level GVfs network mounts (smb://, sftp://, dav://…) as Files mounts them. file:// entries are UDisks
+    volumes; they are listed (and judged) as kernel mounts instead."""
+    try:
+        from gi.repository import Gio
+    except Exception:
+        Gio = None
+    rows = []
+    for line in _run(["gio", "mount", "-l"]).splitlines():
+        line = line.strip()
+        if not (line.startswith("Mount(") and " -> " in line): continue
+        name, uri = line.split(": ", 1)[1].rsplit(" -> ", 1)
+        if uri.startswith("file:"): continue
+        # the local FUSE path, from gvfsd itself (it knows the exact naming); never stat'ed here
+        path = None
+        if Gio is not None:
+            try: path = Gio.File.new_for_uri(uri).get_path()
+            except Exception: path = None
+        rows.append({"kind": "gvfs", "id": uri, "target": path or uri, "source": uri,
+                     "fstype": "gvfs " + uri.split(":")[0], "automount": "", "uri": uri, "name": name})
+    return rows
+
+
+def probe(target):
+    """(status, seconds). status: 'ok' | 'stale' | 'error'. Runs stat -f in a child under a hard-kill timeout."""
+    t0 = time.monotonic()
+    if "://" in target: return "error", 0.0                   # no local path to probe
+    try:
+        r = subprocess.run(["timeout", "-s", "KILL", str(PROBE_TIMEOUT), "stat", "-f", "-c", "%T", "--", target],
+                           capture_output=True, text=True, timeout=PROBE_TIMEOUT + 2)
+    except subprocess.TimeoutExpired:
+        return "stale", time.monotonic() - t0
+    except OSError:
+        return "error", 0.0
+    dt = time.monotonic() - t0
+    if r.returncode == 137 or r.returncode == 124:
+        return "stale", dt
+    return ("ok" if r.returncode == 0 else "error"), dt
+
+
+def all_mounts(network_only=True):
+    return kernel_mounts(network_only) + gvfs_mounts()
+
+
+# ----------------------------------------------------------------------------- kill
+def kill_mount(row, log=print):
+    """Detach exactly this mount. Returns True when it is gone."""
+    if not killable(row):
+        log(f"refused: {row['target']} is not a network or removable mount"); return False
+    if row["kind"] == "gvfs":
+        for args in (["gio", "mount", "-u", row["uri"]], ["gio", "mount", "-uf", row["uri"]]):
+            log("$ " + " ".join(args))
+            try: subprocess.run(args, capture_output=True, text=True, timeout=30)
+            except (OSError, subprocess.TimeoutExpired) as e: log(f"gio: {e}")
+            if not still_mounted(row): return True
+        return False
+    # umount acts on the topmost mount at a path: make sure that is this one, or it would detach something else.
+    top = topmost_id(row["target"])
+    if row.get("id") and top != row["id"]:                   # fail closed: unknown top = no unmount
+        log(f"refused: another mount sits on top of {row['target']}; detach that one first" if top
+            else f"refused: could not tell which mount is on top at {row['target']}")
+        return False
+    # Network mounts: one call, -f aborts the requests hung on the dead server, -l detaches the path; an automount
+    # (autofs) trigger underneath stays and re-mounts on the next access. Local (removable) mounts: a plain umount,
+    # so a busy USB disk is never detached before its data is written. Success is judged by this mount's ID.
+    flags = ["-f", "-l"] if row["fstype"] in NETWORK_FS else []
+    args = (["pkexec"] if os.getuid() != 0 else []) + [UMOUNT] + flags + ["--", row["target"]]
+    log("$ " + " ".join(args))
+    try:
+        r = subprocess.run(args, capture_output=True, text=True, timeout=120)
+    except subprocess.TimeoutExpired:
+        log("umount did not return within 2 minutes"); return not still_mounted(row)
+    except OSError as e:                                      # pkexec missing, or the timeout kill not permitted
+        log(f"could not run umount: {e}"); return not still_mounted(row)
+    if args[0] == "pkexec" and r.returncode in (126, 127):    # pkexec(1): 126 dismissed, 127 not authorised
+        log("authorisation cancelled" if r.returncode == 126 else "not authorised"); return False
+    if r.stderr.strip(): log(r.stderr.strip())
+    return not still_mounted(row)
+
+
+def topmost_id(target):
+    """ID of the mount umount would act on at this path (all types, hidden ones too): the one at this target that is
+    not the parent of another mount at the same target. By parent links, not list order: findmnt lists mounts in
+    creation order, which `mount --move` breaks. None when it cannot be told (findmnt failed, or no single top)."""
+    try: fs = json.loads(_run(["findmnt", "-J", "-l", "-o", "ID,PARENT,TARGET"]) or "{}").get("filesystems") or []
+    except ValueError: return None
+    here = [n for n in fs if n.get("target") == target]
+    parents = {str(n.get("parent")) for n in here}
+    tops = [str(n.get("id")) for n in here if str(n.get("id")) not in parents]
+    return tops[0] if len(tops) == 1 else None
+
+
+def still_mounted(row):
+    if row["kind"] == "gvfs":
+        return any(m["uri"] == row["uri"] for m in gvfs_mounts())
+    if row.get("id"):
+        out = _run(["findmnt", "-rn", "-o", "ID"])
+        return row["id"] in out.split() if out else True
+    return subprocess.run(["findmnt", "-rn", "--", row["target"]], capture_output=True).returncode == 0
+
+
+# ----------------------------------------------------------------------------- cli
+def cli(network_only):
+    rows = all_mounts(network_only)
+    if not rows:
+        print("no " + ("network " if network_only else "") + "mounts"); return
+    w = max(len(r["target"]) for r in rows)
+    for r in rows:
+        st, dt = probe(r["target"])
+        tag = {"ok": "OK   ", "stale": "STALE", "error": "ERR  "}[st]
+        am = "  (automount: re-arms on next access)" if r["automount"] else ""
+        print(f"{tag} {dt*1000:6.0f} ms  {r['target']:<{w}}  {r['source']}  [{r['fstype']}]{am}")
+
+
+# ----------------------------------------------------------------------------- gui
+def gui(network_only):
+    import gi
+    gi.require_version("Gtk", "4.0"); gi.require_version("Adw", "1")
+    from gi.repository import Gtk, Adw, GLib
+
+    class Win(Adw.ApplicationWindow):
+        def __init__(self, app):
+            super().__init__(application=app, title="Killswitch", default_width=760, default_height=440)
+            self.network_only = network_only
+            self.rows = {}                       # key (mount ID or URI) -> (ActionRow, status label, kill button)
+            self.probing = set()                 # keys with a probe still running
+            self.last_stale = {}                 # key -> time of the last probe that found it stale
+            self.killing = set()
+            tv = Adw.ToolbarView(); self.set_content(tv)
+            hb = Adw.HeaderBar(); tv.add_top_bar(hb)
+            self.toggle = Gtk.ToggleButton(label="Network only", active=network_only)
+            self.toggle.connect("toggled", self.on_toggle); hb.pack_start(self.toggle)
+            refresh = Gtk.Button(icon_name="view-refresh-symbolic", tooltip_text="Probe every mount now")
+            refresh.connect("clicked", lambda *_: self.refresh(force=True)); hb.pack_end(refresh)
+            self.toast = Adw.ToastOverlay(); tv.set_content(self.toast)
+            page = Adw.PreferencesPage(); self.toast.set_child(page)
+            self.group = Adw.PreferencesGroup(title="Mounts",
+                description=f"Each mount is probed in a child process with a {PROBE_TIMEOUT:.0f} s timeout. "
+                            "STALE = the probe timed out: the server is gone and anything touching that path hangs.")
+            page.add(self.group)
+            self.empty = Adw.ActionRow(title="No mounts", subtitle="Nothing to show with the current filter")
+            self.group.add(self.empty)
+            self.refresh(); GLib.timeout_add_seconds(5, self.refresh)
+
+        def on_toggle(self, b):
+            self.network_only = b.get_active(); self.refresh(force=True)
+
+        def refresh(self, force=False):
+            """Collect the mount list in a thread (gio and systemctl must never block the window), then apply it."""
+            if getattr(self, "_listing", False): return True
+            self._listing = True
+            only = self.network_only
+            def work():
+                try: rows = all_mounts(only)
+                except Exception as e: rows = None; print(f"killswitch: listing failed: {e}", file=sys.stderr)
+                GLib.idle_add(self.apply_rows, rows, force)
+            threading.Thread(target=work, daemon=True).start()
+            return True
+
+        def apply_rows(self, rows, force=False):
+            self._listing = False
+            if rows is None: return False
+            seen = set(); now = time.monotonic()
+            for r in rows:
+                key = "|".join((r["id"], r["target"], r["fstype"], r["source"]))   # mount IDs get reused
+                seen.add(key)
+                if key not in self.rows: self.add_row(key, r)
+                # one probe per mount at a time; a mount already found stale is re-probed only every STALE_REPROBE s
+                if key in self.probing: continue
+                if not force and now - self.last_stale.get(key, -1e9) < STALE_REPROBE: continue
+                self.probing.add(key)
+                threading.Thread(target=self.probe_row, args=(key, r), daemon=True).start()
+            for k in list(self.rows):
+                if k not in seen:
+                    self.group.remove(self.rows[k][0]); del self.rows[k]
+            self.empty.set_visible(not self.rows)
+            return False
+
+        def add_row(self, key, r):
+            row = Adw.ActionRow(title=GLib.markup_escape_text(r["target"]),
+                                subtitle=GLib.markup_escape_text(f"{r['source']}  ·  {r['fstype']}" +
+                                                                 ("  ·  automount (re-arms on next access)" if r["automount"] else "")))
+            status = Gtk.Label(label="probing…", css_classes=["dim-label"]); row.add_suffix(status)
+            kill = Gtk.Button(label="Kill", css_classes=["destructive-action"], valign=Gtk.Align.CENTER,
+                              tooltip_text=("Detach this mount. Asks for your password." if r["kind"] == "kernel"
+                                            else "Unmount this GVfs share (no password needed)."))
+            if not killable(r):
+                kill.set_sensitive(False)
+                kill.set_tooltip_text("Not offered: Killswitch only detaches network mounts and mounts under "
+                                      "/media, /mnt and /run/media, never the system's filesystems or your home.")
+            kill.connect("clicked", lambda *_: self.confirm_kill(key, r)); row.add_suffix(kill)
+            self.group.add(row); self.rows[key] = (row, status, kill)
+
+        def probe_row(self, key, r):
+            try: st, dt = probe(r["target"])
+            except Exception: st, dt = "error", 0.0
+            GLib.idle_add(self.show_status, key, st, dt)
+
+        def show_status(self, key, st, dt):
+            self.probing.discard(key)
+            if st == "stale": self.last_stale[key] = time.monotonic()
+            else: self.last_stale.pop(key, None)
+            if key not in self.rows: return False
+            row, label, kill = self.rows[key]
+            label.set_css_classes({"ok": ["success"], "stale": ["error", "heading"], "error": ["warning"]}[st])
+            label.set_label({"ok": f"OK  {dt*1000:.0f} ms", "stale": f"STALE  >{PROBE_TIMEOUT:.0f} s", "error": "error"}[st])
+            if st == "stale": row.add_css_class("error")
+            else: row.remove_css_class("error")
+            return False
+
+        def confirm_kill(self, key, r):
+            if key in self.killing: return
+            if r["kind"] == "gvfs":
+                how = "Unmounted through GVfs (gio), the way Files does it; no password needed."
+            elif r["fstype"] in NETWORK_FS:
+                how = ("Forced and lazy: requests stuck on the dead server are aborted, so programs waiting on it get "
+                       "an error instead of hanging, and the path is detached even while files are open.")
+            else:
+                how = "A normal unmount: if files are still open on it, it stays mounted and Killswitch says why."
+            d = Adw.AlertDialog(heading="Detach this mount?", body=f"{r['target']}\n{r['source']}\n\n" + how
+                + ("\n\nAn automount unit backs this path: it re-mounts on the next access." if r["automount"] else ""))
+            d.add_response("cancel", "Cancel"); d.add_response("kill", "Kill")
+            d.set_response_appearance("kill", Adw.ResponseAppearance.DESTRUCTIVE)
+            d.connect("response", lambda _d, resp: resp == "kill" and self.start_kill(key, r))
+            d.present(self)
+
+        def start_kill(self, key, r):
+            self.killing.add(key)
+            if key in self.rows: self.rows[key][2].set_sensitive(False)
+            threading.Thread(target=self.do_kill, args=(key, r), daemon=True).start()
+
+        def do_kill(self, key, r):
+            msgs, ok = [], False
+            try: ok = kill_mount(r, log=msgs.append)
+            except Exception as e: msgs.append(f"error: {e}")
+            finally: GLib.idle_add(self.after_kill, key, r, ok, msgs)
+
+        def after_kill(self, key, r, ok, msgs):
+            self.killing.discard(key)
+            if key in self.rows: self.rows[key][2].set_sensitive(killable(r))
+            reason = "" if ok else (" — " + msgs[-1] if msgs else "")
+            t = Adw.Toast(title=("Detached " if ok else "Still mounted: ") + r["target"] + reason, timeout=6)
+            t.set_use_markup(False)                               # paths and umount messages may contain & or <
+            self.toast.add_toast(t)
+            if not ok and msgs: print("\n".join(msgs), file=sys.stderr)
+            self.refresh(force=True)
+            return False
+
+    app = Adw.Application(application_id="org.pidesktop.Killswitch")
+    app.connect("activate", lambda a: (a.props.active_window or Win(a)).present())
+    app.run([])
+
+
+# ----------------------------------------------------------------------------- main
+if __name__ == "__main__":
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("--cli", action="store_true", help="print the table instead of opening a window")
+    ap.add_argument("--all", action="store_true", help="show local filesystems too, not just network mounts")
+    ap.add_argument("--kill", metavar="MOUNTPOINT", help="detach this mount the way the Kill button does, and exit")
+    a = ap.parse_args()
+    if a.kill:
+        want = a.kill if "://" in a.kill else os.path.normpath(a.kill)
+        rows = [r for r in all_mounts(False) if r["target"] == want or r.get("uri") == a.kill]
+        if not rows: sys.exit(f"not mounted (or not a listed mount type): {a.kill}")
+        row = rows[-1]                                        # the topmost mount at that path
+        if not killable(row): sys.exit(f"refused: {a.kill} is not a network or removable mount")
+        sys.exit(0 if kill_mount(row) else 1)
+    if a.cli or not os.environ.get("DISPLAY") and not os.environ.get("WAYLAND_DISPLAY"):
+        cli(not a.all)
+    else:
+        gui(not a.all)

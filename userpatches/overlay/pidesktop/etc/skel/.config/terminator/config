@@ -1,7 +1,9 @@
-# Terminator — Pi-Desktop 4.0 "Plaid" (design by Plaid Claude, 2026-09-26)
+# Terminator — Plaid Pi 5.0 (2026-09-26)
 # Palette: orange #E85020 · cream #F3E2B8 · navy #1b2a55 (wallpaper base)
-# Window 1480x800 = 147 cols x 36 rows in Ubuntu Sans Mono 13 (measured on the Plaid 2026-09-27; the same at any scale,
-# the size is in logical px). The fastfetch greeting's info column starts at col 78, so this leaves room for its lines.
+# Window 1480x1040 = 147 cols x 46 rows in Ubuntu Sans Mono 13 at normal text size (the size is in logical px, so display
+# scaling does not change it; text scaling does: at 1.33 it is 113 x 36). The fastfetch greeting is 97 columns x 34 rows
+# side by side, so it shows whole, logo top included, up to text scale 1.33; narrower terminals get the logo on top.
+# 1040 px tall still fits a 1080p screen under the top bar.
 [global_config]
   inactive_color_offset = 0.8
   suppress_multiple_term_dialog = True
@@ -42,7 +44,7 @@
     [[[window0]]]
       type = Window
       parent = ""
-      size = 1480, 800
+      size = 1480, 1040
     [[[child1]]]
       type = Terminal
       parent = window0

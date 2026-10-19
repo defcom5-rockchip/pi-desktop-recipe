@@ -1,0 +1,6 @@
+# Pi-Desktop: vendor codec service + 2D engine are root-only on an Armbian rootfs.
+# VA-API clients (mpv, Chromium, Firefox) run as the desktop user, so grant the video group, and the active seat's user
+# through uaccess (an account added in Settings is not in group video). Sorts before 73-seat-late.rules, which applies it.
+KERNEL=="mpp_service", MODE="0660", GROUP="video", TAG+="uaccess"
+KERNEL=="rga", MODE="0660", GROUP="video", TAG+="uaccess"
+KERNEL=="mpp-service", MODE="0660", GROUP="video", TAG+="uaccess"

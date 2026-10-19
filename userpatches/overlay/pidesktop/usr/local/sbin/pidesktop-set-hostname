@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 defcom5-rockchip (Pi-Desktop). See LICENSE in the recipe repository.
 # pidesktop-set-hostname — ask for the computer name during Armbian's first login (called by armbian-firstlogin
-# right after the user account is created; the recipe inserts the call). Every image ships as "pidesktop", so two
-# Pi-Desktops on one network would clash (mDNS pidesktop.local, Samba/NetBIOS name) without this.
-#   pidesktop-set-hostname [username]      suggestion = <username>-pidesktop, editable
+# right after the user account is created; the recipe inserts the call). Every image ships as "plaidpi", so two
+# Pi-Desktops on one network would clash (mDNS plaidpi.local, Samba/NetBIOS name) without this.
+#   pidesktop-set-hostname [username]      suggestion = <username>-plaidpi, editable
 #   PRESET_HOSTNAME=name                   non-interactive (Armbian preset / automated first run)
 #   PIDESKTOP_HOSTNAME_DRYRUN=1            print what would change, change nothing (testing)
 
@@ -36,7 +36,7 @@ apply() {
 }
 
 user="$(sanitize "${1:-}")"
-suggest="$(sanitize "${user:+$user-}pidesktop")"
+suggest="$(sanitize "${user:+$user-}plaidpi")"
 
 if [[ -n ${PRESET_HOSTNAME:-} ]]; then
 	name="$(sanitize "$PRESET_HOSTNAME")"
@@ -46,7 +46,7 @@ fi
 # no terminal (automated first run): keep the image default rather than hang on a prompt
 [[ -t 0 ]] || exit 0
 
-echo -e "\nThe computer name is how this Pi-Desktop appears on your network (file sharing, $suggest.local)."
+echo -e "\nThe computer name is how this Plaid Pi appears on your network (file sharing, $suggest.local)."
 while :; do
 	read -r -e -p "Please provide a computer name: " -i "$suggest" answer
 	name="$(sanitize "$answer")"

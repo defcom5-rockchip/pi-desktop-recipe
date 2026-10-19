@@ -1,0 +1,16 @@
+// Pi-Desktop: turn the daily apt job back on and choose what installs by itself.
+// Armbian's held armbian-bsp-cli package ships 02-armbian-periodic with APT::Periodic::Enable "0", which makes
+// apt.systemd.daily exit before it refreshes the lists or runs unattended-upgrades (4.0 never upgraded by itself).
+APT::Periodic::Enable "1";
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";
+
+// Unattended upgrades: Ubuntu's own default set (Allowed-Origins in 50unattended-upgrades: the release and its
+// security pocket) plus the browser vendors. Armbian's extra patterns (its own origin and every Ubuntu pocket) are
+// cleared: Armbian's packages on this image are held or arrive with Pi-Desktop releases.
+#clear Unattended-Upgrade::Origins-Pattern;
+Unattended-Upgrade::Origins-Pattern {
+	"origin=LP-PPA-xtradeb-apps";
+	"origin=LP-PPA-mozillateam";
+	"origin=Google LLC";
+};

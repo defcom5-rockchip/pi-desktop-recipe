@@ -22,14 +22,14 @@ case $APP in
 	vscodium)    BIN=/usr/bin/codium;      TITLE="VSCodium";     ICON=pidesktop-get-code
 	             WHAT="VSCodium, the community build of VS Code with Microsoft's telemetry removed"; FROM="the VSCodium project"; SIZE="about 160 MB" ;;
 	firefox)     BIN=/usr/bin/firefox;     TITLE="Firefox";      ICON=pidesktop-get-web; RUN=/usr/local/bin/firefox
-	             WHAT="Firefox, set up for this board's graphics chip (10-bit hardware video)"; FROM="the Ubuntu Mozilla Team"; SIZE="about 90 MB" ;;
+	             WHAT="Firefox, set up for this board's graphics chip (hardware video decode)"; FROM="the Ubuntu Mozilla Team"; SIZE="about 90 MB" ;;
 	--list)      echo "libreoffice gimp inkscape thunderbird vscodium firefox"; exit 0 ;;
 	*)           echo "usage: pidesktop-get <libreoffice|gimp|inkscape|thunderbird|vscodium|firefox> [args]" >&2; exit 2 ;;
 esac
 
 if [[ ! -x $BIN ]]; then
 	zenity --question --title="$TITLE" --icon="$ICON" --width=460 --ok-label="Install" --cancel-label="Not Now" \
-		--text="$TITLE isn't installed yet.\n\nPi-Desktop keeps the image small and adds $WHAT when you want it. It is downloaded from $FROM ($SIZE) and then updates together with the rest of your software." \
+		--text="$TITLE isn't installed yet.\n\nPlaid Pi keeps the image small and adds $WHAT when you want it. It is downloaded from $FROM ($SIZE) and then updates together with the rest of your software." \
 		|| exit 0
 	# every output line becomes the dialog's status text ("# ..."), trimmed to fit. The installer prints nothing until
 	# pkexec has the password, so the first text says what is really happening then. --no-cancel stays: closing the

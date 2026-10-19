@@ -18,7 +18,7 @@ unchanged behaviour), so the interval can be raised or the reads stopped
 (0) to test whether the steady DDC traffic is what wedges the sink. With
 0, the dclk/disconnect checks still run; only the SCDC read is skipped.
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+Assisted-by: LLM
 ---
  drivers/gpu/drm/bridge/synopsys/dw-hdmi-qp.c | 20 ++++++++++++++++++--
  1 file changed, 18 insertions(+), 2 deletions(-)

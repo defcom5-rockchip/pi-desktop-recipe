@@ -2,16 +2,14 @@ From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: defcom5-rockchip <286489597+defcom5-rockchip@users.noreply.github.com>
 Date: Tue, 22 Sep 2026 14:37:56 -0700
 Subject: [PATCH 5/5] arm64: dts: rockchip: orangepi-5: source vp0 dclk from
- v0pll; CMA 512M
+ v0pll
 
 With FRL-rate modes on the CRU path, rockchip_rk3588_drm_dclk_set_rate()
 re-rates the source PLL to the exact pixel clock only when that PLL is
 v0pll; gpll/cpll cannot give 1082.89 MHz. Assign dclk_vop0_src to v0pll
-as the RK3588 EVB boards do. Also settle the CMA reservation at 512M,
-the distribution value (idle use ~11 MB; 4K HEVC 10-bit decode is fine
-on 256M).
+as the RK3588 EVB boards do.
 
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Assisted-by: LLM
 ---
  arch/arm64/boot/dts/rockchip/rk3588s-orangepi-5.dts | 13 ++++++++++++-
  1 file changed, 12 insertions(+), 1 deletion(-)
@@ -20,15 +18,6 @@ diff --git a/arch/arm64/boot/dts/rockchip/rk3588s-orangepi-5.dts b/arch/arm64/bo
 index 9e87a97cf288..f4aca35cbb27 100755
 --- a/arch/arm64/boot/dts/rockchip/rk3588s-orangepi-5.dts
 +++ b/arch/arm64/boot/dts/rockchip/rk3588s-orangepi-5.dts
-@@ -272,7 +272,7 @@ reserved-memory {
- 		cma {
- 			compatible = "shared-dma-pool";
- 			reusable;
--			size = <0x0 (1024 * 0x100000)>;
-+			size = <0x0 (512 * 0x100000)>;
- 			linux,cma-default;
- 		};
- 	};
 @@ -1153,6 +1153,17 @@ &vp0 {
  	cursor-win-id=<ROCKCHIP_VOP2_ESMART0>;
  	rockchip,plane-mask = <(1 << ROCKCHIP_VOP2_CLUSTER0 | 1 << ROCKCHIP_VOP2_ESMART0)>;

@@ -25,7 +25,7 @@ An LLM assistant (Claude, Anthropic) traced the call path, drafted this
 change and its description; the hang and its timing were observed on real
 hardware.
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+Assisted-by: LLM
 ---
  .../phy/rockchip/phy-rockchip-samsung-hdptx.c   | 17 +++++++++++++++++
  1 file changed, 17 insertions(+)

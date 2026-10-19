@@ -1,0 +1,44 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: defcom5-rockchip <286489597+defcom5-rockchip@users.noreply.github.com>
+Date: Sun, 11 Oct 2026 08:27:24 -0700
+Subject: [PATCH] Bluetooth: hci_h4: rate-limit "Frame reassembly failed"
+
+h4_recv() logs one line for every byte run the H4 state machine cannot
+parse.  When a UART controller is power-cycled under a live hci device
+(the AP6275P's BT_REG_ON is switched by the platform rfkill, so a desktop
+"Bluetooth off/on" resets the chip, which comes back without its firmware
+at its default 115200 baud while the host still talks at 1.5 Mbaud), every
+byte the chip sends is garbage and the error is logged at line rate
+until the open attempt times out:
+
+  Bluetooth: hci0: Frame reassembly failed (-84)   x 426,378 in ~15 s
+
+Measured on an Orange Pi 5B, one such event (413,270 lines in 23 s) left
+the 200 MB persistent journal (SystemMaxUse=200M) at 198.8 MB with nothing
+older than the first 24 s of that boot still retained, and journald
+repeatedly reported "Missed N kernel messages".  The line carries no
+information after the first few; use the rate-limited variant so a
+misbehaving UART cannot flood the log.  hci_bcm.c, hci_qca.c and the other
+UART protocols have the same line but were not exercised here.
+
+Assisted-by: LLM
+---
+ drivers/bluetooth/hci_h4.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/bluetooth/hci_h4.c b/drivers/bluetooth/hci_h4.c
+index 1d0cdf023243..34ab1f5f9c91 100644
+--- a/drivers/bluetooth/hci_h4.c
++++ b/drivers/bluetooth/hci_h4.c
+@@ -116,7 +116,7 @@ static int h4_recv(struct hci_uart *hu, const void *data, int count)
+ 				 h4_recv_pkts, ARRAY_SIZE(h4_recv_pkts));
+ 	if (IS_ERR(h4->rx_skb)) {
+ 		int err = PTR_ERR(h4->rx_skb);
+-		bt_dev_err(hu->hdev, "Frame reassembly failed (%d)", err);
++		bt_dev_err_ratelimited(hu->hdev, "Frame reassembly failed (%d)", err);
+ 		h4->rx_skb = NULL;
+ 		return err;
+ 	}
+-- 
+2.53.0
+

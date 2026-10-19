@@ -281,13 +281,26 @@ class Daemon:
             return
         slide = self.settings.get_uint('slide-seconds') or 15  # noqa: E501
         duration = str(slide) if len(files) > 1 else 'inf'
+        # One file: loop INSIDE the file (seek to start at EOF) so mpv keeps a single decoder session for the whole
+        # night. --loop-playlist reloads the file every pass and re-creates the hardware decoder each time; with a
+        # second decoder client resident (a paused browser video) that failed after ~55 loops with
+        # `mpp_dma_import_fd: dma_buf_map_attachment -12` → green frames (2026-10-07, reproduced twice: 53 and 56
+        # loops). A slideshow of several files still needs --loop-playlist; images do not touch the decoder.
+        loop = '--loop-file=inf' if len(files) == 1 else '--loop-playlist=inf'
         cmd = ['mpv', '--no-terminal', '--really-quiet', '--force-window=yes', '--fs',
                '--osc=no', '--osd-bar=no', '--osd-level=0', '--input-default-bindings=no',
                '--input-vo-keyboard=no', '--input-cursor=no', '--cursor-autohide=always',
                '--stop-screensaver=no', '--audio=no', '--ytdl=no', '--resume-playback=no',
-               '--loop-playlist=inf', f'--image-display-duration={duration}',
-               # the global mpv.conf has video-sync=display-resample: at 4K@120 Hz that re-renders every vsync
-               # (measured on a DVD: GPU 93 % vs 43 %), hours on end for a screensaver. Pace by the clock instead.
+               # The root cause of the 2026-10-07 green frames: with `hwdec=vaapi,vaapi-copy`
+               # mpv tries zero-copy VA-API first at every decoder init; once the compositor offers dmabuf v5 (gnome-shell
+               # with the graphics shim) that attempt reaches the driver, and drivers before 2.5.0 left ~5 buffers mapped
+               # in rkvdec's IOMMU per abandoned attempt. ~55 inits exhausted it → `dma_buf_map_attachment -12`. The
+               # screensaver asks for copy-back directly whatever the global mpv.conf says; with --loop-file there is one
+               # decoder init per night anyway.
+               '--hwdec=vaapi-copy',
+               loop, f'--image-display-duration={duration}',
+               # the global mpv.conf had video-sync=display-resample until 4.5 (audio now): at 4K@120 Hz that re-renders
+               # every vsync (measured on a DVD: GPU 93 % vs 43 %), hours on end for a screensaver. Pace by the clock.
                '--video-sync=audio',
                '--wayland-app-id=pidesktop-screensaver', '--title=Plaid Pi Screensaver',
                *map(str, files)]

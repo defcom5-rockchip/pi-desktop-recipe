@@ -7,22 +7,23 @@ Subject: [PATCH 3/5] drm/rockchip: vop2: raise dclk ceiling to 1200MHz for
 The RK3588 VOP2 driver caps the display clock at 600MHz, so 4K@120Hz
 (~1188MHz, or ~594MHz TMDS via YCbCr 4:2:0) is never offered to userspace.
 
-Raise the limit in two places:
-  - VOP2_MAX_DCLK_RATE: 600000 -> 1200000 KHz (rockchip_drm_vop2.c)
-  - rk3588_vop_video_ports[] VP1 & VP2 .dclk_max: 600M -> 1200M Hz
-    (rockchip_vop2_reg.c); VP0 already at 2.4GHz, VP3 left at 200M.
+Raise VOP2_MAX_DCLK_RATE from 600000 to 1200000 KHz (rockchip_drm_vop2.c).
+The per-port limits in rockchip_vop2_reg.c stay as they are: VP0 already
+allows 2.4GHz, VP1 and VP2 keep 600MHz (on the Orange Pi 5B, VP2 drives the
+USB-C DisplayPort), VP3 keeps 200MHz. Only HDMI at 4K@120Hz on VP0 needs
+the higher limit.
 
 For clocks above 600MHz the driver already falls back from the HDMI PHY
 PLL to the System CRU as the dclk source.
 
 Based on jamautt's work in Joshua-Riek/ubuntu-rockchip PR #1326.
 
-Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
 (cherry picked from commit 5a7110fdb2aaac5e98b37ec1b0e592cec62adffe)
+
+Assisted-by: LLM
 ---
  drivers/gpu/drm/rockchip/rockchip_drm_vop2.c | 4 ++--
- drivers/gpu/drm/rockchip/rockchip_vop2_reg.c | 4 ++--
- 2 files changed, 4 insertions(+), 4 deletions(-)
+ 1 file changed, 4 insertions(+), 4 deletions(-)
 
 diff --git a/drivers/gpu/drm/rockchip/rockchip_drm_vop2.c b/drivers/gpu/drm/rockchip/rockchip_drm_vop2.c
 index 36e3f6b853ae..81791adef3dc 100644
@@ -39,25 +40,3 @@ index 36e3f6b853ae..81791adef3dc 100644
  
  enum vop2_data_format {
  	VOP2_FMT_ARGB8888 = 0,
-diff --git a/drivers/gpu/drm/rockchip/rockchip_vop2_reg.c b/drivers/gpu/drm/rockchip/rockchip_vop2_reg.c
-index 33fe01f0f032..8ee69016a15e 100644
---- a/drivers/gpu/drm/rockchip/rockchip_vop2_reg.c
-+++ b/drivers/gpu/drm/rockchip/rockchip_vop2_reg.c
-@@ -3055,7 +3055,7 @@ static const struct vop2_video_port_data rk3588_vop_video_ports[] = {
- 	 .feature = VOP_FEATURE_OUTPUT_10BIT | VOP_FEATURE_ALPHA_SCALE,
- 	 .gamma_lut_len = 1024,
- 	 .cubic_lut_len = 729, /* 9x9x9 */
--	 .dclk_max = 600000000,
-+	 .dclk_max = 1200000000, /* 600M->1200M for 4K@120Hz, PR #1326 */
- 	 .max_output = { 4096, 2304 },
- 	 .pre_scan_max_dly = { 76, 65, 65, 54 },
- 	 .intr = &rk3568_vp1_intr,
-@@ -3071,7 +3071,7 @@ static const struct vop2_video_port_data rk3588_vop_video_ports[] = {
- 	 .feature = VOP_FEATURE_OUTPUT_10BIT | VOP_FEATURE_ALPHA_SCALE,
- 	 .gamma_lut_len = 1024,
- 	 .cubic_lut_len = 4913, /* 17x17x17 */
--	 .dclk_max = 600000000,
-+	 .dclk_max = 1200000000, /* 600M->1200M for 4K@120Hz, PR #1326 */
- 	 .max_output = { 4096, 2304 },
- 	 .pre_scan_max_dly = { 52, 52, 52, 52 },
- 	 .intr = &rk3568_vp2_intr,

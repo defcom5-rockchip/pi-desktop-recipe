@@ -3,5 +3,15 @@
 # strip the harmless Mali userspace banner.
 if [ -n "$PS1" ] && [ -z "$PI_DESKTOP_FETCHED" ] && [ -t 1 ] && command -v fastfetch >/dev/null 2>&1; then
     export PI_DESKTOP_FETCHED=1
-    fastfetch 2>/dev/null | grep -v 'arm_release_ver:'
+    # side by side needs 97 columns; a narrower terminal (Large Text, a small window) gets the logo on top instead.
+    # fastfetch's output is piped, so it cannot see the width itself.
+    # Terminator can start the shell while its window is still 80x24 and resize it a moment later: wait up to 0.5 s
+    # for the real size before choosing the layout.
+    _pd_size=$(stty size 2>/dev/null </dev/tty); _pd_n=0
+    while [ "$_pd_size" = "24 80" ] && [ "$_pd_n" -lt 10 ]; do
+        sleep 0.05; _pd_size=$(stty size 2>/dev/null </dev/tty); _pd_n=$((_pd_n + 1))
+    done
+    if [ "${_pd_size#* }" -ge 97 ] 2>/dev/null; then fastfetch 2>/dev/null; else fastfetch --logo-position top 2>/dev/null; fi \
+        | grep -v 'arm_release_ver:'
+    unset _pd_size _pd_n
 fi

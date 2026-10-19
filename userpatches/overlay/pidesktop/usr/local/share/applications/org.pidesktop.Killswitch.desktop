@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+[Desktop Entry]
+Type=Application
+Name=Killswitch
+Comment=List mounts, spot the stale network ones, detach them
+Exec=/usr/local/bin/killswitch
+Icon=drive-harddisk
+Terminal=false
+Categories=System;Filesystem;
+Keywords=mount;nfs;smb;cifs;stale;hung;unmount;
+StartupNotify=true

@@ -1,31 +1,45 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
-Upstream-Name: Pi-Desktop
+Upstream-Name: Plaid Pi (formerly Pi-Desktop)
 Upstream-Contact: https://github.com/defcom5-rockchip/pi-desktop/issues
 Source: https://github.com/defcom5-rockchip/pi-desktop-recipe
 Comment:
- Pi-Desktop is an image for the Orange Pi 5B built from Ubuntu 26.04 packages with the
+ Plaid Pi is an image for the Orange Pi 5B built from Ubuntu 26.04 packages with the
  Armbian build framework and Armbian's Rockchip vendor kernel. It is not affiliated with or
  endorsed by Canonical, Armbian, Rockchip, Arm, Google, Mozilla, Microsoft or Shenzhen Xunlong.
  .
- What Pi-Desktop adds to the image, and the licence of each part:
+ What Plaid Pi adds to the image, and the licence of each part:
  .
-  * Pi-Desktop's own programs and scripts (/usr/local/bin/pidesktop-*, /usr/local/sbin/pidesktop-*,
+  * Plaid Pi's own programs and scripts (/usr/local/bin/pidesktop-*, /usr/local/sbin/pidesktop-*,
     the Files add-on, systemd units, configuration): GPL-3.0-or-later.
-  * Pi-Desktop's artwork (the Plaid wallpaper, the penguin screensaver clip and still, the tartan
+  * Plaid Pi's artwork (the Plaid wallpaper, the penguin screensaver clip and still, the tartan
     terminal logo, the pi-desktop logo and the installer icons): CC BY-SA 4.0.
-  * Kernel: Armbian's linux-rockchip branch rk-6.1-rkr7.2 at commit 44bbd021d7808cab93d1f2d64c1f092038257576
-    with 11 Pi-Desktop patches (GPL-2.0). Complete source: https://github.com/defcom5-rockchip/linux-rockchip
-    tag pi-desktop-4.0, and the patches in the recipe repository (userpatches/kernel/).
+  * Kernel: Armbian's linux-rockchip branch rk-6.1-rkr7.2 at commit 44bbd021d7808cab93d1f2d64c1f092038257576,
+    merged with upstream stable Linux 6.1.189, with the Plaid Pi patches (GPL-2.0). Complete source:
+    https://github.com/defcom5-rockchip/linux-rockchip tag pi-desktop-5.0, and the patches in the recipe
+    repository (userpatches/kernel/).
   * Boot loader: Armbian's build of radxa/u-boot branch next-dev-v2024.10 commit 39cd993e5d6296635438e84f4576b3a9bf76f86e,
     unmodified (GPL-2.0+), with Rockchip's binary boot blobs (rkbin, Rockchip's licence).
-  * Packages Pi-Desktop rebuilt or patched (sources in the recipe repository): gnome-control-center (+pd3),
-    Rhythmbox 3.5.1, PipeWire 1.6.9 / WirePlumber 0.5.17, rockchip-vaapi (https://github.com/defcom5-rockchip/rockchip-vaapi),
-    librockchip-mpp and librga (rebuilt for 26.04), the libmali-hook shim.
+  * Packages Plaid Pi rebuilt or patched (sources in the recipe repository): gnome-control-center (+pd3),
+    Rhythmbox 3.5.1, PipeWire 1.6.9 / WirePlumber 0.5.17, rockchip-vaapi 3.5.0 (https://github.com/defcom5-rockchip/rockchip-vaapi),
+    librockchip-mpp and librga (rebuilt for 26.04), the libmali-hook shim, gst-plugins-good (+pd1, one upstream
+    FLAC fix), and mpv (Ubuntu's mpv 0.41.0-2ubuntu4 rebuilt with two patches as +pd1; GPL-3.0+ as
+    linked). Complete source for mpv and gst-plugins-good is published with each Plaid Pi release next to the
+    image, and the patches and build scripts are in the recipe repository (mpv/, gst-plugins-good/).
+  * Pro Updates 1.5.0, the update window (pro-updates, pro-updates-gui and its root helper): GPL-3.0-or-later,
+    by the Plaid Pi maintainer. Source: https://github.com/defcom5-rockchip/pro-updates tag v1.5.0; licence
+    details in /usr/share/doc/pro-updates/copyright.
+  * libpidesktop-ffmali (/usr/local/lib/pidesktop-firefox-mali), the small library Plaid Pi's Firefox launcher loads so
+    the unmodified Firefox can use the hardware video decoder with the Mali driver: LGPL-2.1-or-later, Plaid Pi's.
+    Complete source in /usr/share/pi-desktop/firefox/. Not part of Firefox; not made or endorsed by Mozilla.
+  * The Plaid look: the Dhruva dock (/usr/share/gnome-shell/extensions/dhruva@narkagni), Dhruva 3.1 by NarkAgni,
+    GPL-3.0-or-later, https://github.com/narkagni/dhruva commit 95462d4, with one Plaid Pi change (src/core/autohide/EdgeDetection.js, 2026-10-13: the dock's pressure barrier is rebuilt when the monitor geometry changes) (its LICENSE file is installed with it); the Plaid Panel top bar and Killswitch (/usr/local/bin/killswitch), Plaid Pi's, GPL-3.0-or-later; the Plaid
+    icon theme (/usr/share/icons/Plaid), Adwaita's folder icons recoloured, CC BY-SA 3.0 US or LGPL-3.0 as Adwaita
+    (see its COPYING). Details: /usr/share/pi-desktop/look/README.
   * Arm Mali user-space driver (libmali): Arm's end-user licence, see /usr/share/doc/libmali-*/copyright.
   * Wireless/Bluetooth firmware: Armbian's armbian-firmware package (vendor licences).
  .
- Everything else is unmodified Ubuntu 26.04 (ports.ubuntu.com), xtradeb or Ubuntu Mozilla Team PPA
- packages; their sources are in those archives at the versions listed in the release manifest.
+ Everything else is unmodified Ubuntu 26.04 (ports.ubuntu.com), Armbian (apt.armbian.com), xtradeb or Ubuntu
+ Mozilla Team PPA packages; their sources are in those archives at the versions listed in the release manifest.
 
 Files: *
 Copyright: 2026 defcom5-rockchip
@@ -40,9 +54,35 @@ License: GPL-3.0-or-later
  .
  On Debian-based systems the full text is in /usr/share/common-licenses/GPL-3.
 
+Files: /usr/local/lib/pidesktop-firefox-mali/libpidesktop-ffmali.so.1 /usr/share/pi-desktop/firefox/libpidesktop-ffmali.c
+ /usr/share/pi-desktop/firefox/build.sh
+Copyright: 2026 defcom5-rockchip
+License: LGPL-2.1-or-later
+ On Debian-based systems the full text of the license is in /usr/share/common-licenses/LGPL-2.1.
+Comment: The complete source (libpidesktop-ffmali.c, build.sh, README) is installed in /usr/share/pi-desktop/firefox/
+ and is in the recipe repository (userpatches/overlay/pidesktop/firefox/ffmali/). The library links dynamically against
+ libmali-hook (GPL-2.0-or-later) and Arm's proprietary libmali, separate packages under their own licences; it neither
+ contains nor modifies them. Only Plaid Pi's Firefox launcher loads it; Firefox itself is unmodified and is not part of
+ this image.
+
 Files: /usr/share/backgrounds/pi-desktop/* /usr/share/pi-desktop/screensaver/* /usr/share/pi-desktop/fastfetch/plaid.ans
  /usr/share/icons/hicolor/*/apps/pi-desktop.* /usr/share/icons/hicolor/scalable/apps/pidesktop-get-*.svg
+ /usr/share/pixmaps/pi-desktop.svg /usr/share/pixmaps/plaid-pi-logo-text*
  /usr/share/plymouth/themes/pi-desktop/watermark.png /usr/share/plymouth/themes/pi-desktop/bgrt-fallback.png
 Copyright: 2026 defcom5-rockchip
 License: CC-BY-SA-4.0
  Creative Commons Attribution-ShareAlike 4.0 International. https://creativecommons.org/licenses/by-sa/4.0/
+
+Files: /usr/share/gnome-shell/extensions/dhruva@narkagni/*
+Copyright: 2026 NarkAgni
+License: GPL-3.0-or-later
+Comment: Dhruva 3.1, https://github.com/narkagni/dhruva commit 95462d4, with one Plaid Pi change (src/core/autohide/EdgeDetection.js, 2026-10-13: the dock's pressure barrier is rebuilt when the monitor geometry changes);
+ its LICENSE file is installed with it, and the source tarball of that commit plus the Plaid Pi change as a patch are
+ published with each Plaid Pi release.
+
+Files: /usr/share/icons/Plaid/*
+Copyright: 2002-2026 GNOME Project (Adwaita icon theme, https://gitlab.gnome.org/GNOME/adwaita-icon-theme)
+ 2026 defcom5-rockchip (recolouring)
+License: CC-BY-SA-3.0-US or LGPL-3
+ Creative Commons Attribution-ShareAlike 3.0 United States, https://creativecommons.org/licenses/by-sa/3.0/us/ ,
+ or the GNU Lesser General Public License version 3, /usr/share/common-licenses/LGPL-3, at your option.

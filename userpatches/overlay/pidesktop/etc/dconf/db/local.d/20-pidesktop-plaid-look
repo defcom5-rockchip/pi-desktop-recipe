@@ -1,0 +1,57 @@
+# /etc/dconf/db/local.d/20-pidesktop-plaid-look — Pi-Desktop 4.5 "Plaid look" defaults (run `dconf update` after installing).
+# From the maintainer's own Plaid (2026-10-10): dark GNOME with the orange accent, the Plaid folder icons, and the
+# dhruva dock in the wallpaper's navy and cream. Users still override everything per account (Settings, Extensions).
+
+[org/gnome/desktop/interface]
+accent-color='orange'
+color-scheme='prefer-dark'
+# 'Adwaita' + prefer-dark, NOT gtk-theme 'Adwaita-dark': on GTK 3.24.52 that theme name renders light (no such theme
+# directory; GTK falls back to the light built-in). This combination makes GTK3 apps such as Rhythmbox dark.
+gtk-theme='Adwaita'
+icon-theme='Plaid'
+
+[org/gnome/shell/extensions/dhruva]
+# bottom, Show Apps at the right end, always visible
+dock-position='BOTTOM'
+icon-size=40
+icon-spacing=6
+dock-padding=8
+border-radius=20
+full-width=false
+show-grid-button=true
+grid-button-position='END'
+hide-mode='always'
+# the wallpaper's navy, top to bottom, mostly opaque; cream edges and icons, orange running indicator
+dock-theme='default'
+use-gradient=true
+gradient-direction='vertical'
+background-color='#1b2a55'
+background-gradient-color='#0e1736'
+background-opacity=85
+blur-tint-color='#1b2a55'
+stroke-width=2
+stroke-color='#F3E2B8'
+stroke-opacity=18
+indicator-style='line'
+indicator-color-mode='custom'
+indicator-color='#E85020'
+indicator-glow=true
+grid-icon-color='#F3E2B8'
+separator-color='#F3E2B8'
+running-separator-color='#F3E2B8'
+desktop-btn-color='#F3E2B8'
+# motion
+hover-zoom=true
+hover-zoom-style='coverflow'
+minimize-effect='magic-lamp'
+# the music pill stays OFF: when on, it sends every track's artist, title and length to lrclib.net (lyrics) and
+# downloads players' album-art URLs, by itself. Nothing in the image may contact the network on its own (PRIVACY.md).
+show-music-pill=false
+show-mounts=true
+show-trash=true
+show-clock=false
+# the Show Apps button is the Pi-Desktop logo. A PNG on purpose: gdk-pixbuf cannot sniff pi-desktop.svg (its comment
+# header pushes <svg past the sniff window) and the button would be blank.
+custom-grid-icon='/usr/share/icons/hicolor/512x512/apps/pi-desktop.png'
+custom-grid-icon-scale=100
+use-old-grid-icon=false

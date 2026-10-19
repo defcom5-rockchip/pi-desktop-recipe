@@ -18,8 +18,8 @@ set_kv() {   # file key value — replace the line or append it
 }
 for f in /etc/os-release /usr/lib/os-release; do
 	[ -f "$f" ] && [ ! -L "$f" ] || continue
-	set_kv "$f" NAME "Pi-Desktop"
-	set_kv "$f" PRETTY_NAME "Pi-Desktop $VER"
+	set_kv "$f" NAME "Plaid Pi"
+	set_kv "$f" PRETTY_NAME "Plaid Pi $VER"
 	set_kv "$f" LOGO "pi-desktop"
 	set_kv "$f" HOME_URL "https://defcom5-rockchip.github.io/pi-desktop/"
 	set_kv "$f" DOCUMENTATION_URL "https://github.com/defcom5-rockchip/pi-desktop"

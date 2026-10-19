@@ -4,7 +4,7 @@ Context: two 4K@120 black screens (09-22 18:29, 09-24 08:27) — after 1–2 h t
 (`i2c read time out`), link lost; a live modeset on that state hard-hung the board once. dri-devel thread
 "ACLK_VOP pinned at 500 MHz starves DP 4K120 on RK3588" (Aug 2026): on MAINLINE the VOP AXI clock is stuck at 500 MHz
 and 4K120 underflows (POST_BUF_EMPTY storm). On our VENDOR kernel the aclk already runs 750 MHz in "advanced mode"
-(measured on .214 at 4K60; hdisplay > 2560 or linedur < 7.5 us selects it) — but underflow REPORTING is off
+(measured on the test board at 4K60; hdisplay > 2560 or linedur < 7.5 us selects it) — but underflow REPORTING is off
 (DT flag absent), so our logs cannot exclude it.
 
 1. `rk3588-vop-report-post-buf-empty.dts` (+ .dtbo) — overlay adding `rockchip,report-post-buf-empty` to /vop@fdd90000.
@@ -33,4 +33,4 @@ Trade-off at 0: a sink-requested FLT re-train (FLT_update bit 5) is ignored, exa
 Test order: 120 Hz with `frl_update_poll_ms=0` for >3 h incl. the VLC/Firefox load that failed before
 (failures came at 14 min / 2 h / 3 h). Clean → try 250. Still fails at 0 → polling is not it; next is
 0001 `rockchipdrm.frl_max_rate_per_lane=8` (32G). Both compile-tested for arm64 against test2's
-/boot/config (O=/mnt/build/PI_Studio/o-rkr72-ct), branch frl-max-rate-param @ a4878d1d17c1.
+/boot/config (a local O= build directory), branch frl-max-rate-param @ a4878d1d17c1.

@@ -1,6 +1,6 @@
-# gnome-control-center 1:50.3-0ubuntu0.2 patch for Pi-Desktop (current build: +pd3.3)
-Power panel: a "Screensaver" group replaces Automatic Screen Blank. Text: "Pi-Desktop uses a screensaver instead of
-blanking the screen." (+pd3.3, 2026-09-26; +pd3.2 said the display could not resume at 4K@120 Hz — fixed by kernel
+# gnome-control-center 1:50.3-0ubuntu0.2 patch for Pi-Desktop (current build: +pd3.4)
+Power panel: a "Screensaver" group replaces Automatic Screen Blank. Text: "Plaid Pi uses a screensaver instead of
+blanking the screen." (+pd3.4, 2026-09-26; +pd3.2 said the display could not resume at 4K@120 Hz — fixed by kernel
 patches 0010/0011, wording changed.)
 
 Rebuild on an Orange Pi 5B booted from SD, with a spare eMMC: copy pidesktop-power-screensaver.patch and

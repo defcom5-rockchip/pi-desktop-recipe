@@ -1,0 +1,13 @@
+Plaid icon theme (Pi-Desktop)
+
+The folder icons in this theme are the Adwaita icon theme's folder, user-home and user-desktop icons
+(GNOME Project, adwaita-icon-theme 50.0, https://gitlab.gnome.org/GNOME/adwaita-icon-theme, https://www.gnome.org)
+with their blues recoloured to the Pi-Desktop Plaid palette
+(peach body #e9a67c, navy-blue tab #21418c), and 16 px PNGs rendered from them. Everything else is
+inherited from Adwaita at run time.
+
+Like Adwaita, this theme is available under the Creative Commons Attribution-ShareAlike 3.0 United
+States licence (https://creativecommons.org/licenses/by-sa/3.0/us/) or the GNU Lesser General Public
+License version 3 (/usr/share/common-licenses/LGPL-3), at your option.
+
+The recolouring script is /usr/share/pi-desktop/look/make-plaid-icons.sh.

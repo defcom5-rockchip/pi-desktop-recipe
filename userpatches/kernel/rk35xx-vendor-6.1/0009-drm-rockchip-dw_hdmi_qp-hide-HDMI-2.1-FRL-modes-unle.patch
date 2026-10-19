@@ -7,9 +7,10 @@ Subject: [PATCH] drm/rockchip: dw_hdmi_qp: hide HDMI 2.1 FRL modes unless
 On RK3588 (Orange Pi 5B) an HDMI 2.1 FRL link, e.g. 3840x2160@120,
 hard-hangs the SoC whenever the link is torn down and rebuilt: screen
 blank, sink HPD toggle, monitor power-off. TMDS modes up to 4K@60 are
-unaffected. Until the FRL teardown/retrain path is fixed such modes must
-not be offered to userspace by default, so GNOME's Displays panel lists
-up to 4K@60 only.
+unaffected. Such modes are therefore not offered to userspace by default,
+so GNOME's Displays panel lists up to 4K@60 only. (With the teardown and
+retrain fixes, 0010 and 0011, Pi-Desktop sets allow_frl=1 on its kernel
+command line and offers 4K@120.)
 
 Add an allow_frl module parameter (bool, default false, 0644). While it
 is false dw_hdmi_rockchip_mode_valid() returns MODE_BAD for every mode
@@ -57,7 +58,7 @@ an explicit color_depth property change.
 Written with the help of an LLM assistant (Claude); the hang report and
 the decision to gate FRL by default are the submitter's.
 
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Assisted-by: LLM
 ---
  drivers/gpu/drm/rockchip/dw_hdmi_qp-rockchip.c | 17 +++++++++++++++++
  1 file changed, 17 insertions(+)

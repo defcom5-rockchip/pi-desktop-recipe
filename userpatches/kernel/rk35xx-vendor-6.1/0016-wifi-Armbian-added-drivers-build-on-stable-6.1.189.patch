@@ -1,0 +1,99 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: defcom5-rockchip <286489597+defcom5-rockchip@users.noreply.github.com>
+Date: Sat, 10 Oct 2026 20:35:39 -0700
+Subject: [PATCH] wifi: Armbian-added drivers: build on stable 6.1.189
+
+Two upstream interface changes reached the 6.1 series in v6.1.188 and
+v6.1.189, and the out-of-tree Wi-Fi drivers that Armbian's driver step adds to
+the kernel tree (rtl8192eu, rtl8811cu, rtl8812au, rtl88x2bu, uwe5622) only
+expect them on newer series:
+
+  - "USB: core: Use device_driver directly in struct usb_driver and
+    usb_device_driver" (8b7648962d41, first in v6.1.188) removed
+    usb_driver::drvwrap. The four Realtek USB drivers already handle that for
+    6.8+ and for 6.6.157+; add 6.1.188 up to 6.2 to the same test.
+  - cfg80211_ops::tdls_mgmt gained an int link_id argument (a5fcb2b18a7d,
+    first in v6.1.189). rtl88x2bu and uwe5622 add it for 6.5+; add 6.1.189
+    up to 6.2.
+
+(First releases checked against include/linux/usb.h and include/net/cfg80211.h
+at every v6.1.172..v6.1.189 tag.)
+
+Armbian applies its driver patch before the user patches, so this patch can
+reach those files. It changes no behaviour, only which declarations are
+compiled.
+
+Assisted-by: LLM
+---
+--- a/drivers/net/wireless/rtl88x2bu/os_dep/linux/ioctl_cfg80211.c
++++ b/drivers/net/wireless/rtl88x2bu/os_dep/linux/ioctl_cfg80211.c
+@@ -8469,7 +8469,8 @@
+ #else
+ 	u8 *peer,
+ #endif
+-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 5, 0)) || defined(RHEL94)
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 5, 0)) || defined(RHEL94) || \
++	(LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 189) && LINUX_VERSION_CODE < KERNEL_VERSION(6, 2, 0))
+ 	int link_id,
+ #endif
+ 	u8 action_code,
+--- a/drivers/net/wireless/uwe5622/unisocwifi/cfg80211.c
++++ b/drivers/net/wireless/uwe5622/unisocwifi/cfg80211.c
+@@ -3283,7 +3283,8 @@
+ 
+ static int sprdwl_cfg80211_tdls_mgmt(struct wiphy *wiphy,
+ 				     struct net_device *ndev, const u8 *peer,
+-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 5, 0))
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 5, 0)) || \
++	(LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 189) && LINUX_VERSION_CODE < KERNEL_VERSION(6, 2, 0))
+ 				     int link_id,
+ #endif
+ 				     u8 action_code, u8 dialog_token,
+--- a/drivers/net/wireless/rtl8192eu/os_dep/linux/usb_intf.c
++++ b/drivers/net/wireless/rtl8192eu/os_dep/linux/usb_intf.c
+@@ -324,7 +324,8 @@
+ /* 6.6.157 backported the removal of struct usbdrv_wrap into the 6.6 LTS
+  * series, so a plain "older than 6.8" test is no longer enough there. */
+ #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 19) && LINUX_VERSION_CODE < KERNEL_VERSION(6, 8, 0) && \
+-	(LINUX_VERSION_CODE < KERNEL_VERSION(6, 6, 157) || LINUX_VERSION_CODE >= KERNEL_VERSION(6, 7, 0)))
++	(LINUX_VERSION_CODE < KERNEL_VERSION(6, 6, 157) || LINUX_VERSION_CODE >= KERNEL_VERSION(6, 7, 0)) && \
++	(LINUX_VERSION_CODE < KERNEL_VERSION(6, 1, 188) || LINUX_VERSION_CODE >= KERNEL_VERSION(6, 2, 0)))
+ 	.usbdrv.drvwrap.driver.shutdown = rtw_dev_shutdown,
+ #else
+ 	.usbdrv.driver.shutdown = rtw_dev_shutdown,
+--- a/drivers/net/wireless/rtl8811cu/os_dep/linux/usb_intf.c
++++ b/drivers/net/wireless/rtl8811cu/os_dep/linux/usb_intf.c
+@@ -339,7 +339,8 @@
+ /* 6.6.157 backported the removal of struct usbdrv_wrap into the 6.6 LTS
+  * series, so a plain "older than 6.8" test is no longer enough there. */
+ #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 19)) && (LINUX_VERSION_CODE < KERNEL_VERSION(6, 8, 0)) && \
+-	(LINUX_VERSION_CODE < KERNEL_VERSION(6, 6, 157) || LINUX_VERSION_CODE >= KERNEL_VERSION(6, 7, 0))
++	(LINUX_VERSION_CODE < KERNEL_VERSION(6, 6, 157) || LINUX_VERSION_CODE >= KERNEL_VERSION(6, 7, 0)) && \
++	(LINUX_VERSION_CODE < KERNEL_VERSION(6, 1, 188) || LINUX_VERSION_CODE >= KERNEL_VERSION(6, 2, 0))
+ 	.usbdrv.drvwrap.driver.shutdown = rtw_dev_shutdown,
+ #else
+ 	.usbdrv.driver.shutdown = rtw_dev_shutdown,
+--- a/drivers/net/wireless/rtl8812au/os_dep/linux/usb_intf.c
++++ b/drivers/net/wireless/rtl8812au/os_dep/linux/usb_intf.c
+@@ -273,7 +273,8 @@
+ /* 6.6.157 backported the removal of struct usbdrv_wrap into the 6.6 LTS
+  * series, so a plain "older than 6.8" test is no longer enough there. */
+ #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 19)) && (LINUX_VERSION_CODE < KERNEL_VERSION(6, 8, 0)) && \
+-	(LINUX_VERSION_CODE < KERNEL_VERSION(6, 6, 157) || LINUX_VERSION_CODE >= KERNEL_VERSION(6, 7, 0))
++	(LINUX_VERSION_CODE < KERNEL_VERSION(6, 6, 157) || LINUX_VERSION_CODE >= KERNEL_VERSION(6, 7, 0)) && \
++	(LINUX_VERSION_CODE < KERNEL_VERSION(6, 1, 188) || LINUX_VERSION_CODE >= KERNEL_VERSION(6, 2, 0))
+ 	.usbdrv.drvwrap.driver.shutdown = rtw_dev_shutdown,
+ #else
+ 	.usbdrv.driver.shutdown = rtw_dev_shutdown,
+--- a/drivers/net/wireless/rtl88x2bu/os_dep/linux/usb_intf.c
++++ b/drivers/net/wireless/rtl88x2bu/os_dep/linux/usb_intf.c
+@@ -365,7 +365,8 @@
+ /* 6.6.157 backported the removal of struct usbdrv_wrap into the 6.6 LTS
+  * series, so a plain "older than 6.8" test is no longer enough there. */
+ #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 19)) && (LINUX_VERSION_CODE < KERNEL_VERSION(6, 8, 0)) && !defined(RHEL95) && \
+-	(LINUX_VERSION_CODE < KERNEL_VERSION(6, 6, 157) || LINUX_VERSION_CODE >= KERNEL_VERSION(6, 7, 0))
++	(LINUX_VERSION_CODE < KERNEL_VERSION(6, 6, 157) || LINUX_VERSION_CODE >= KERNEL_VERSION(6, 7, 0)) && \
++	(LINUX_VERSION_CODE < KERNEL_VERSION(6, 1, 188) || LINUX_VERSION_CODE >= KERNEL_VERSION(6, 2, 0))
+ 	.usbdrv.drvwrap.driver.shutdown = rtw_dev_shutdown,
+ #else
+ 	.usbdrv.driver.shutdown = rtw_dev_shutdown,

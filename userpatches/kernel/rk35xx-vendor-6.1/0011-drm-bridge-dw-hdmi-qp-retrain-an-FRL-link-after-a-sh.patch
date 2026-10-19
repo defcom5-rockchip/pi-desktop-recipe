@@ -51,12 +51,13 @@ for with hdmi->mutex held.
 A retrain prints "HPD high on an enabled FRL output, retraining the link";
 a successful one ends with the existing "flt success".
 
-Compile-tested only so far; not yet run on hardware.
+Tested on an Orange Pi 5B at 3840x2160@120: after monitor power-cycles and
+screen blanking the link retrains and the picture returns.
 
 An LLM assistant (Claude, Anthropic) traced the code path and drafted this
 change and its description; the failure was observed on real hardware.
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+Assisted-by: LLM
 ---
  drivers/gpu/drm/bridge/synopsys/dw-hdmi-qp.c  | 66 +++++++++++++++++--
  .../gpu/drm/rockchip/dw_hdmi_qp-rockchip.c    |  7 ++

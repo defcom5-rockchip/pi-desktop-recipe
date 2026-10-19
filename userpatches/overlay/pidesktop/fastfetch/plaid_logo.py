@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# plaid_logo.py — Pi Desktop 3.0 "Plaid" terminal logo for fastfetch.
+# plaid_logo.py — Plaid Pi terminal logo for fastfetch.
 # A real 2/2-twill tartan swatch with a π glyph, rendered as truecolor half-blocks
 # (▀ with fg=top pixel, bg=bottom pixel) so it works in ANY terminal (VTE has no sixel by default).
 import sys, numpy as np
@@ -40,8 +40,8 @@ def sgr(fg, bg): return f'\x1b[38;2;{fg[0]};{fg[1]};{fg[2]}m\x1b[48;2;{bg[0]};{b
 lines = [''.join(sgr(px[2*r, c], px[2*r+1, c]) for c in range(W)) + '\x1b[0m' for r in range(H)]
 def centre(s): return ' ' * max(0, (W - len(s)) // 2) + s
 lines.append('')
-lines.append(f'\x1b[1;38;2;232;80;32m{centre("PLAID PI 5.0")}\x1b[0m')
-lines.append(f'\x1b[38;2;243;226;184m{centre("- P L A I D -")}\x1b[0m')
+lines.append(f'\x1b[1;38;2;232;80;32m{centre("PLAID PI")}\x1b[0m')
+lines.append(f'\x1b[38;2;243;226;184m{centre("- 5 . 0 -")}\x1b[0m')
 open(OUT, 'w').write('\n'.join(lines) + '\n')
 # PNG preview of the swatch (10x) so it can be eyeballed without a terminal
 Image.fromarray(px.astype('uint8')).resize((PW * 12, PH * 12), Image.NEAREST).save(OUT.rsplit('.', 1)[0] + '-preview.png')

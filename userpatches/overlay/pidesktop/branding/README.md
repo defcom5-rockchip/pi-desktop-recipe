@@ -111,3 +111,17 @@ For the desktop, install `pi-desktop.svg` as
 Tartan sett, palette and soft-twill rendering: the Pi-Desktop fastfetch art (`plaid_logo.py`).
 π outline: DejaVu Sans Bold (DejaVu fonts, Bitstream Vera licence — the glyph is embedded as an
 outline, no font files are distributed here). Rounded-square house style: the Pi-Desktop installer icons.
+
+## Login-screen wordmark (added 2026-10-16)
+
+| File | What it is |
+|---|---|
+| `plaid-pi-logo-text.svg` / `.png` | 400 × 64 wordmark: the logo plus "Plaid Pi" in DejaVu Sans Bold (as paths), charcoal text, for light backgrounds. |
+| `plaid-pi-logo-text-dark.svg` / `.png` | The same with cream text, for dark backgrounds (the GDM greeter). |
+| `make-wordmark.py` | Generator for the two SVGs (reuses `make-logo.py`'s glyph reader). The PNGs are librsvg renders at 400 × 64. |
+
+`customize-image.sh` installs them in `/usr/share/pixmaps/` and points Ubuntu's `ubuntu-logo-text*.{png,svg}` links
+(which armbian-bsp-cli aims at Armbian's wordmark) at them; the greeter shows that image under the login box.
+
+## SVG icons: put `<svg>` first
+GdkPixbuf (what GNOME Shell and GTK use to load icons) sniffs only the first few hundred bytes of a file for `<svg`. A long comment before the `<svg>` tag makes it fail with "Couldn't recognize the image file format" even though librsvg renders the file — the LibreOffice placeholder icon showed blank in the 2026-10-18 image for this reason. Start every icon with the `<svg …>` tag and put credits/comments inside it.

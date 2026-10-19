@@ -17,7 +17,7 @@ link (cable, sink) stays stable at a lower FRL rate without rebuilding.
 Written with the help of an LLM assistant (Claude); the experiment it
 enables is the submitter's.
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+Assisted-by: LLM
 ---
  drivers/gpu/drm/rockchip/dw_hdmi_qp-rockchip.c | 14 ++++++++++++++
  1 file changed, 14 insertions(+)

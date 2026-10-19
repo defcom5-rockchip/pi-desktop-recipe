@@ -1,0 +1,18 @@
+Plaid Pi look — where each piece comes from
+
+dhruva@narkagni (the dock), /usr/share/gnome-shell/extensions/dhruva@narkagni
+  Dhruva 3.1 by NarkAgni, GPL-3.0-or-later, https://github.com/narkagni/dhruva at commit 95462d4 ("update schemes",
+  the commit after v3.1). Built with the project's own `./manage.sh pack` with one Plaid Pi change (src/core/autohide/EdgeDetection.js, 2026-10-13: the dock's pressure barrier is rebuilt when the monitor geometry changes), plus its LICENSE file, and its
+  settings schema compiled (glib-compile-schemas). Its settings for Plaid Pi are defaults in
+  /etc/dconf/db/local.d/20-pidesktop-plaid-look.
+
+plaid-panel@pidesktop (the top bar), /usr/share/gnome-shell/extensions/plaid-panel@pidesktop
+  Pi-Desktop's own, GPL-3.0-or-later: only a stylesheet (stylesheet.css), which GNOME Shell loads and unloads.
+
+Plaid icon theme, /usr/share/icons/Plaid
+  Adwaita's folder icons recoloured (make-plaid-icons.sh in this folder); CC BY-SA 3.0 US or LGPL-3.0, see its COPYING.
+
+The Show Apps button uses the Pi-Desktop logo, /usr/share/icons/hicolor/512x512/apps/pi-desktop.png (CC BY-SA 4.0).
+To go back to Ubuntu's dock: in the Extensions app, switch off Dhruva and Plaid Panel and switch on Ubuntu Dock; or in a
+terminal: gnome-extensions disable dhruva@narkagni; gnome-extensions disable plaid-panel@pidesktop;
+gnome-extensions enable ubuntu-dock@ubuntu.com  (Ubuntu's dock keeps the Pi-Desktop dock settings it had in 4.0).

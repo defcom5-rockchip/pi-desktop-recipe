@@ -1,0 +1,47 @@
+libpidesktop-ffmali — hardware video decode for the unmodified Firefox on Arm's Mali driver
+===========================================================================================
+
+Plaid Pi does not ship Firefox (Mozilla's trademark policy covers unaltered copies only); the first-click installer
+installs the unmodified Firefox package from Ubuntu's Mozilla Team PPA. With Arm's proprietary Mali driver (libmali
+g24p0) that Firefox cannot use the video frames the hardware decoder produces:
+  8-bit   the NV12 chroma plane (DRM_FORMAT_GR88) does not import (EGL_BAD_MATCH) -> software decode
+          (reported as Mozilla Bug 2078820)
+  10-bit  the P010 luma plane (DRM_FORMAT_R16) imports as an integer texture      -> dark picture, colour only
+This small library, loaded by Plaid Pi's Firefox launcher, works around both between Firefox and the driver: a
+refused GR88/RG88 import is retried as R16 (same bytes per texel), and a plane the driver imported as an integer
+texture is copied into an ordinary (normalised) texture when Firefox binds it. The source explains the details.
+Not part of Firefox and not made or endorsed by Mozilla. If Firefox misbehaves, retry with PIDESKTOP_FFMALI=0 before
+reporting to Mozilla, and mention this library in any report.
+
+Measured 2026-10-12 on an Orange Pi 5B (libmali g24p0, Firefox 157.0 from the Mozilla Team PPA, unmodified):
+ffmali-probe.py imports R16, GR88, RG88, GR1616 and R8 planes the way Firefox does and every sampled texel matches the
+source bytes (with PIDESKTOP_FFMALI=0, R16 reads ~0 and GR88/RG88 are refused). In Firefox, 1080p 24 fps H.264
+(8-bit), VP9 and AV1 (8- and 10-bit) clips decode on the VPU. A 4K luma plane's import and copy take ~2.2-2.5 ms per
+frame in the probe. Not yet measured: Firefox's picture against a reference (checked by eye only), 4K and 10-bit 4K60
+pacing in Firefox, HEVC.
+
+Files
+  libpidesktop-ffmali.c   the library (LGPL-2.1-or-later)
+  build.sh                builds libpidesktop-ffmali.so.1 here (cross on an x86-64 build host, or --native on a board)
+  ffmali-probe.py         board test: imports every plane format the way Firefox does and compares a grid of sampled
+                          texels with the source bytes (PIDESKTOP_FFMALI=0 shows the unworked-around behaviour)
+The image installs the library, and its complete source (libpidesktop-ffmali.c, build.sh, this README) in
+/usr/share/pi-desktop/firefox/.
+
+Install (customize-image.sh; pidesktop-install-app re-links the names when Firefox is installed)
+  /usr/local/lib/pidesktop-firefox-mali/libpidesktop-ffmali.so.1
+  libEGL.so, libGL.so -> libpidesktop-ffmali.so.1   (Firefox tries these names before the .so.1 ones)
+  libGL.so.1 -> the Mali GLES library               (Firefox's GPU probe, as before 5.0; no libEGL.so.1 here)
+The Firefox launcher (/usr/local/bin/firefox) puts that directory first on LD_LIBRARY_PATH. Programs Firefox starts
+inherit it but load libEGL.so.1 / libGL.so.1, which are not this library, and the library only acts in processes whose
+executable is under /usr/lib/firefox/ (PIDESKTOP_FFMALI=1 enables it anywhere, for tests).
+The library assumes Firefox only samples the planes it fixes up; Plaid Pi's Firefox policy locks off the two settings
+that would make Firefox render into them (media.ffmpeg.vaapi.force-surface-zero-copy, gfx.webrender.compositor).
+Off switch: PIDESKTOP_FFMALI=0 (the launcher then also hides 10-bit from Firefox, the behaviour before 5.0).
+Diagnostics: PIDESKTOP_FFMALI_LOG=1 logs every import and copy to Firefox's stderr.
+
+If a future Firefox stops loading EGL/GL by these names, the library is not used: 8-bit falls back to software and
+10-bit draws dark until PIDESKTOP_FFMALI=0 is set. The Firefox-side fix for 8-bit is the patch on Mozilla Bug 2078820.
+
+Written with an LLM assistant (Anthropic's Claude), which drafted the library, build.sh and the probe and ran the tests
+on the board; the maintainer directs and reviews the work and decides what ships.

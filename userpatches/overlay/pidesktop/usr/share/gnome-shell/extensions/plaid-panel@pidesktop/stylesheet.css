@@ -1,0 +1,43 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later — Copyright (C) 2026 defcom5-rockchip (Pi-Desktop) */
+/* Plaid Panel: top bar matched to the Pi-Desktop Plaid wallpaper.
+   bar = the top of the sky (#0b1131, sampled), text/icons = the horizon glow (#b36d54 sampled -> #e9a67c lifted for contrast) */
+#panel { background-color: rgba(11, 17, 49, 0.92); color: #e9a67c; }
+#panel .panel-button { color: #e9a67c; }
+#panel .panel-button:hover, #panel .panel-button:focus { color: #f3c7a2; }
+#panel .panel-button:active, #panel .panel-button:checked { color: #f3c7a2; box-shadow: inset 0 0 0 100px rgba(233, 166, 124, 0.14); }
+#panel .clock, #panel .clock-display { color: #e9a67c; }
+#panel .panel-button .system-status-icon, #panel .panel-button .app-menu-icon { color: #e9a67c; }
+/* the workspace pill at the left */
+#panel .workspace-dot { background-color: #e9a67c; }
+#panel .panel-button:checked .workspace-dot, #panel .panel-button:hover .workspace-dot { background-color: #f3c7a2; }
+
+/* ── quick settings: the "on" toggles in wallpaper peach instead of the system accent orange ─────────────────
+   palette from the horizon glow: dark peach #b36d54 → light peach #e9a67c (hover #f3c7a2); navy text for contrast */
+.quick-toggle:checked {
+  color: #0e1736;
+  background-color: #d08a64;
+  background-gradient-direction: vertical;
+  background-gradient-start: #e9a67c;
+  background-gradient-end: #b36d54; }
+.quick-toggle:hover:checked, .quick-toggle:focus:hover:checked {
+  background-color: #dd9a74;
+  background-gradient-start: #f3c7a2;
+  background-gradient-end: #c97e62; }
+.quick-toggle:active:checked, .quick-toggle:active:hover:checked, .quick-toggle:active:focus:checked {
+  background-color: #e9a67c;
+  background-gradient-start: #f8d4b4;
+  background-gradient-end: #d08a64; }
+.quick-toggle:insensitive:checked { color: rgba(14, 23, 54, 0.5); background-gradient-start: #c99a80; background-gradient-end: #9c6650; }
+/* the arrow / menu segment of a toggle that has a menu: the darker end of the same cloth */
+.quick-toggle-has-menu .quick-toggle-menu-button:checked { color: #f3e2b8; background-color: #a7634c; }
+.quick-toggle-has-menu .quick-toggle-menu-button:checked:hover,
+.quick-toggle-has-menu .quick-toggle-menu-button:checked:focus:hover { background-color: #b36d54; }
+.quick-toggle-has-menu .quick-toggle-menu-button:checked:active,
+.quick-toggle-has-menu .quick-toggle-menu-button:checked:active:hover { background-color: #c07859; }
+.quick-toggle-has-menu:checked .quick-toggle-separator { background-color: rgba(243, 226, 184, 0.35); }
+/* sliders (volume, brightness) and the active icon in a toggle's menu header */
+.quick-slider .slider, .slider { -barlevel-active-background-color: #e9a67c; }
+.quick-toggle-menu .header .icon.active { background-color: #d08a64; color: #0e1736; }
+/* focus ring in peach instead of accent */
+.quick-toggle:focus:checked, .quick-toggle-has-menu .quick-toggle-menu-button:checked:focus,
+.quick-toggle-menu:focus, .quick-slider .slider-bin:focus { box-shadow: inset 0 0 0 2px rgba(233, 166, 124, 0.55) !important; }

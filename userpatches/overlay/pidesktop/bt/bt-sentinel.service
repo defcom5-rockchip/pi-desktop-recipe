@@ -1,10 +1,11 @@
 [Unit]
 Description=Bluetooth auto-heal sentinel (AP6275P)
 After=bluetooth.target bluetooth-hciattach.service
+ConditionPathExists=!/run/pidesktop-bt-absent
 
 [Service]
 ExecStart=/usr/local/sbin/bt-sentinel
-Restart=always
+Restart=on-failure
 RestartSec=5
 KillMode=process
 

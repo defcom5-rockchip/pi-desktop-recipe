@@ -1,15 +1,22 @@
 # /etc/dconf/db/local.d/10-pidesktop-shell — Pi Desktop shell layout (Chrome first: default browser since 2026-09-23) (run `dconf update` after installing)
 # Armbian's 00-bg ships vanilla GNOME (no dock, no desktop icons). This restores the Pi Desktop 2.0.x look:
-# bottom dock (Launchpad style) with the "Show Apps" button at the right end, Home + Trash on the desktop.
+# bottom dock with the "Show Apps" button at the right end. From 4.5 the dock is Dhruva (20-pidesktop-plaid-look) and
+# the desktop is clean (Trash and mounts are on the dock).
 # Later files win over 00-bg for the same key; users still override per-account via Settings/gsettings.
 
 [org/gnome/shell]
-enabled-extensions=['ubuntu-dock@ubuntu.com', 'ding@rastersoft.com', 'ubuntu-appindicators@ubuntu.com', 'tiling-assistant@ubuntu.com']
-favorite-apps=['org.gnome.Nautilus.desktop', 'google-chrome.desktop', 'chromium.desktop', 'firefox.desktop', 'mpv.desktop', 'terminator.desktop', 'org.gnome.Settings.desktop']
+# 4.5 "Plaid look" (2026-10-10: the look of the maintainer's own Plaid): the dhruva dock and the plaid top bar
+# replace Ubuntu's dock, which stays installed (gnome-shell-ubuntu-extensions) and can be switched back on in Extensions.
+enabled-extensions=['ding@rastersoft.com', 'ubuntu-appindicators@ubuntu.com', 'tiling-assistant@ubuntu.com', 'dhruva@narkagni', 'plaid-panel@pidesktop']
+# The maintainer's dock order. Firefox, LibreOffice, VSCodium and Thunderbird are first-click installers until installed.
+favorite-apps=['org.gnome.Nautilus.desktop', 'google-chrome.desktop', 'chromium.desktop', 'firefox.desktop', 'mpv.desktop', 'terminator.desktop', 'org.gnome.Settings.desktop', 'libreoffice-startcenter.desktop', 'org.gnome.Rhythmbox3.desktop', 'codium.desktop', 'thunderbird.desktop', 'pro-updates.desktop', 'audacity.desktop']
 # GNOME hides "Log Out" in the power menu when there is one local user and one session type — every fresh Pi-Desktop
 always-show-log-out=true
 
 [org/gnome/shell/extensions/dash-to-dock]
+# Ubuntu's dock is off from 4.5 (see enabled-extensions); these stay for anyone who switches it back on.
+# The dock auto-hides: a plain GNOME session does not inherit Ubuntu's dock-fixed override, and the maintainer kept that
+# behaviour for 4.0 (2026-10-03) — the dock slides up at the bottom edge or with the Super key.
 dock-position='BOTTOM'
 show-apps-at-top=false
 show-show-apps-button=true
@@ -26,14 +33,15 @@ apply-custom-theme=false
 custom-theme-shrink=true
 click-action='focus-or-appspread'
 running-indicator-style='DOTS'
-# 2026-09-23: user removed Trash from the dock (Trash stays on the desktop, see [org/gnome/shell/extensions/ding])
+# 2026-09-23: user removed Trash from Ubuntu's dock (it was on the desktop then; 4.5 shows it on the Dhruva dock)
 show-trash=false
 show-mounts=true
 multi-monitor=false
 
 [org/gnome/shell/extensions/ding]
-show-home=true
-show-trash=true
+# 4.5 Plaid look: a clean desktop; Trash and mounts are on the dhruva dock instead
+show-home=false
+show-trash=false
 show-volumes=false
 show-network-volumes=false
 
@@ -46,3 +54,20 @@ primary-color='#1b2a55'
 
 [org/gnome/desktop/screensaver]
 picture-uri='file:///usr/share/backgrounds/pi-desktop/penguin-drop-plaid-v2-3840x2160.png'
+
+# App grid folders. GNOME Shell writes its own System and Utilities folders at the first login only when the system
+# gives none (appDisplay.js _ensureDefaultFolders), so these defaults replace them: GNOME 50's own lists
+# (misc/config.js SYSTEM_FOLDER_APPS / UTILITIES_FOLDER_APPS; apps that are not installed are simply not shown),
+# plus Killswitch in Utilities. Killswitch is not on the dock: GNOME hides dock favourites from the grid and its folders.
+[org/gnome/desktop/app-folders]
+folder-children=['System', 'Utilities']
+
+[org/gnome/desktop/app-folders/folders/System]
+name='X-GNOME-Shell-System.directory'
+translate=true
+apps=['nm-connection-editor.desktop', 'org.gnome.DejaDup.desktop', 'org.gnome.baobab.desktop', 'org.gnome.DiskUtility.desktop', 'im-config.desktop', 'org.gnome.Logs.desktop', 'org.freedesktop.MalcontentControl.desktop', 'org.freedesktop.GnomeAbrt.desktop', 'org.gnome.Sysprof.desktop', 'org.gnome.SystemMonitor.desktop', 'org.gnome.tweaks.desktop']
+
+[org/gnome/desktop/app-folders/folders/Utilities]
+name='X-GNOME-Shell-Utilities.directory'
+translate=true
+apps=['org.gnome.Decibels.desktop', 'org.gnome.Connections.desktop', 'org.gnome.Papers.desktop', 'org.gnome.FileRoller.desktop', 'org.gnome.font-viewer.desktop', 'org.gnome.Loupe.desktop', 'org.gnome.seahorse.Application.desktop', 'org.gnome.Seahorse.desktop', 'org.pidesktop.Killswitch.desktop']

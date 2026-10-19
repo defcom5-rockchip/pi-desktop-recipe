@@ -5,6 +5,16 @@
         "DisablePocket": true,
         "NoDefaultBookmarks": true,
         "OverrideFirstRunPage": "",
-        "OverridePostUpdatePage": ""
+        "OverridePostUpdatePage": "",
+        "Preferences": {
+            "media.ffmpeg.vaapi.force-surface-zero-copy": {
+                "Value": 1,
+                "Status": "locked"
+            },
+            "gfx.webrender.compositor": {
+                "Value": false,
+                "Status": "locked"
+            }
+        }
     }
 }

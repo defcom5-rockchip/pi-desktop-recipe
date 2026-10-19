@@ -1,11 +1,19 @@
 #!/bin/sh
-# Pi-Desktop: Firefox on the Mali blob. Firefox loads libGL.so(.1) first and dlsym()s GL from it; glvnd's copy dispatches
-# into nothing when EGL is not glvnd's, so give Firefox a private libGL that IS the Mali GLES library. Wayland only.
+# Plaid Pi: Firefox on the Mali blob. Firefox loads EGL and GL as libEGL.so(.1) / libGL.so(.1) and dlsym()s from them;
+# in this private directory those names are libpidesktop-ffmali, our small library: it passes Firefox's EGL/GL calls to
+# Arm's Mali driver (it depends on libmali-hook + libmali, like the libEGL stub in Rockchip's libmali package) and works
+# around two video-import problems in that driver: the 8-bit NV12 chroma plane it refuses, and the 10-bit luma plane it
+# imports as an integer texture (dark picture). Tested 2026-10-12, Firefox 157, 1080p: 8-bit H.264 and 8/10-bit VP9 and
+# AV1 decode on the VPU. Source: /usr/share/pi-desktop/firefox/. Programs Firefox starts inherit this path. Wayland only.
 export LD_LIBRARY_PATH="/usr/local/lib/pidesktop-firefox-mali${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export MOZ_ENABLE_WAYLAND=1
-# Plaid Pi: the Mali blob imports a 16-bit plane as an integer texture and the stock Firefox then draws 10-bit video
-# dark (rockchip-vaapi KI-11). Hide the 10-bit profiles for Firefox only: 10-bit (HEVC Main 10, VP9 Profile 2, AV1
-# 10-bit) decodes in software with correct colours, 8-bit stays on the VPU. Remove once Firefox carries the fix
-# (the +pd3 personal build already does).
-export RKVA_HIDE_10BIT=1
+# Off switch for troubleshooting (quit Firefox first: a running Firefox ignores a new one's environment):
+# PIDESKTOP_FFMALI=0 makes the library a pure pass-through; 10-bit is then hidden from Firefox's hardware decoder
+# (software, correct colours) as before 5.0, and 8-bit falls back to software (Bug 2078820). The same happens if the
+# library is missing, so a broken install never draws 10-bit dark.
+case ${PIDESKTOP_FFMALI:-1} in
+	0*) export RKVA_HIDE_10BIT=1 ;;
+	*)  [ -f /usr/local/lib/pidesktop-firefox-mali/libpidesktop-ffmali.so.1 ] && [ -e /usr/lib/aarch64-linux-gnu/libmali.so.1 ] \
+	        || export RKVA_HIDE_10BIT=1 ;;
+esac
 exec /usr/lib/firefox/firefox "$@"

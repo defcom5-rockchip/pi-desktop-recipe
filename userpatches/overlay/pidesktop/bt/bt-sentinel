@@ -1,31 +1,84 @@
 #!/bin/bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 defcom5-rockchip — https://github.com/defcom5-rockchip
-# bt-sentinel v3.6 — event-driven auto-heal for AP6275P (Plaid: unchanged; bt-revive v4 restarts bluetooth-hciattach.service)
+# bt-sentinel v3.9 — event-driven auto-heal for AP6275P (bt-revive v4 restarts bluetooth-hciattach.service)
 # v3: rfkill-event driven (instant toggle reaction). v3.1: cooldown gates only
 # FAILED heals. v3.2: post-heal power-up RETRY (bluez adapter re-registration
 # races a single polite attempt on back-to-back cycles). v3.3: more patience +
 # a down/up nudge + a second-chance pass before declaring failure.
-FALLBACK=45; COOLDOWN_FAIL=45
-was_blocked=0; expect=0; miss=0; last_fail=0
+# v3.7: read the EVENTS, not just the state. The platform switch (bt_default) is
+# BT_REG_ON: every block/unblock power-cycles the chip, which comes back without
+# its firmware at its default 115200 baud while hciattach still holds the UART at
+# 1.5 Mbaud. The adapter's open attempt then floods "Frame reassembly failed" and
+# hci0 ends DOWN with a valid address, which v3.6 took for a deliberate off.
+# v3.6 only sampled the rfkill state after each event, and that sample could land
+# after a quick undo (the 4.0 udev rule; a fast double toggle would do the same),
+# so the dead adapter was ignored for good. Now any observed bt_default block
+# re-attaches as soon as the switch is back on (no 4 s wait: the firmware is gone
+# for certain), and the bt-revive guard matches the process name only (-f matched
+# any command line containing "bt-revive", e.g. tail -f on its log, and silently
+# disabled the sentinel).
+# v3.8 (after review): the attach script's own power cycle is recognised by the
+# time window it records in /run/pidesktop-bt-cycle, not by a 30 s blanket that
+# also swallowed a user's off/on; a switch-off during a repair stops the repair
+# instead of being overridden; a fresh attach that does not come up is healed at
+# the end of its window; the event reader is killed on exit.
+# v3.9: stands down (exit 0, Restart=on-failure) when bluetooth-hciattach.sh found no Broadcom PCIe module — an
+# Orange Pi 5 (not B) running this image has no Wi-Fi/Bluetooth, and must not get a repair toast every minute.
+FALLBACK=45; COOLDOWN_FAIL=45; ATTACH_SETTLE=40   # attach script worst case: cycle 3 s + 15 s + retry (1+3+15 s) = 37 s
+CYCLE_FILE=/run/pidesktop-bt-cycle               # "start end" epochs of bluetooth-hciattach.sh's last 20 block/unblock cycles
+ABSENT=/run/pidesktop-bt-absent                  # written by bluetooth-hciattach.sh when there is no module
+stand_down(){ [ -e "$ABSENT" ] || return 0; log "$(cat "$ABSENT") — sentinel standing down"; exit 0; }
+was_blocked=0; expect=0; miss=0; last_fail=0; seen_pc=0; seen_hci=0; fresh=0
 log(){ logger -t bt-sentinel "$*"; }
 notify(){ local pid u addr
-  pid=$(pgrep -x gnome-shell | head -1); [ -n "$pid" ] || return 0
-  u=$(ps -o user= -p "$pid" | tr -d " ")
+  for pid in $(pgrep -x gnome-shell); do u=$(ps -o user= -p "$pid" | tr -d " "); [ "$u" != gdm ] && break; u=""; done
+  [ -n "$u" ] || return 0
   addr=$(tr "\0" "\n" < /proc/$pid/environ 2>/dev/null | grep "^DBUS_SESSION_BUS_ADDRESS=")
   [ -n "$addr" ] || return 0
-  sudo -u "$u" env "$addr" notify-send --transient -i bluetooth "$1" "$2" 2>/dev/null || true
+  timeout 5 sudo -n -u "$u" env "$addr" notify-send --transient -i bluetooth "$1" "$2" 2>/dev/null || true
 }
 blocked(){  # intent = the PLATFORM switch only (bt_default) — per-hci rfkills are
-            # reborn on every heal and can carry stale desktop state
-  rfkill list bluetooth 2>/dev/null | grep -A1 "bt_default" | grep -q "Soft blocked: yes"; }
+            # reborn on every heal and can carry stale desktop state.
+            # No answer from rfkill counts as blocked: the safe direction is to wait, never to override.
+  local out; out=$(rfkill list bluetooth 2>/dev/null) || return 0; [ -n "$out" ] || return 0
+  printf '%s\n' "$out" | grep -A1 "bt_default" | grep -q "Soft blocked: yes"; }
+bt_default_idx(){ rfkill -o ID,DEVICE -n 2>/dev/null | awk '$2 == "bt_default" { print $1; exit }'; }
+PC_IDX=$(bt_default_idx)   # platform rfkill: fixed for the boot (looked up again if it was not there yet)
+own_cycle(){  # $1 = epoch of an event: inside one of the attach script's recorded block/unblock windows (±2 s)?
+              # (the file keeps the last 20 "start end" lines, "-" = still in progress)
+  local s e; [ -r "$CYCLE_FILE" ] || return 1
+  while read -r s e; do
+    [ -n "$s" ] || continue; { [ -z "$e" ] || [ "$e" = - ]; } && e=$((s + 6))   # in progress (or killed mid-cycle): a cycle is 3 s, never "until now"
+    [ "$1" -ge $((s - 2)) ] && [ "$1" -le $((e + 2)) ] && return 0
+  done < "$CYCLE_FILE"
+  return 1; }
+note(){  # one "rfkill event" line: remember a soft block even if it is undone before we look
+         # format: 2026-10-11 08:12:40,038675-07:00: idx 0 type 2 op 2 soft 1 hard 0   (type 2 = bluetooth, op 2 = change)
+  local ts
+  case "$1" in *" op 2 soft 1 "*)
+    [ -n "$PC_IDX" ] || PC_IDX=$(bt_default_idx)
+    ts=${1%%: idx*}; ts=$(date -d "${ts/,/.}" +%s 2>/dev/null)   # "2026-10-11 09:47:26.575010-07:00": offset kept, so DST cannot shift it
+    case "$1" in
+      *" idx ${PC_IDX:-none} type 2 "*) if [ -n "$ts" ] && own_cycle "$ts"; then :; else seen_pc=1; fi;;
+      *" type 2 "*) seen_hci=1;;
+    esac;;
+  esac; }
 mac_ok(){ local m; m=$(hciconfig hci0 2>/dev/null | awk '/BD Address/{print $3}')
           [ -n "$m" ] && [ "$m" != "00:00:00:00:00:00" ]; }
 fully_up(){ hciconfig hci0 2>/dev/null | grep -q "UP RUNNING" && mac_ok; }
-power_up(){  # insist: retries, a down/up nudge, bluez pokes
+attaching(){  # bluetooth-hciattach.service started less than ATTACH_SETTLE s ago: its firmware load may still be in
+              # progress (boot, a manual restart, our heal), so a DOWN hci0 is not a wedge yet
+              # (/proc/uptime counts suspended time, systemd's monotonic clock does not: after a sleep the age only looks
+              # larger, which errs towards acting, never towards ignoring a wedge)
+  local s; s=$(systemctl show -p ExecMainStartTimestampMonotonic --value bluetooth-hciattach.service 2>/dev/null)
+  [ -n "$s" ] && [ "$s" != 0 ] && [ $(( $(cut -d. -f1 /proc/uptime) - s / 1000000 )) -lt "$ATTACH_SETTLE" ]; }
+power_up(){  # insist: retries, a down/up nudge, bluez pokes — but step aside the moment the user switches Bluetooth off
+  blocked && return 2
   rfkill unblock bluetooth 2>/dev/null   # clear stale blocks off the REBORN hci rfkill
   local i
   for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+    blocked && return 2
     [ "$i" = 5 ] && { rfkill unblock bluetooth 2>/dev/null; hciconfig hci0 down 2>/dev/null; sleep 1; }
     hciconfig hci0 up 2>/dev/null
     [ $((i % 2)) -eq 0 ] && timeout 4 bluetoothctl power on >/dev/null 2>&1
@@ -34,48 +87,64 @@ power_up(){  # insist: retries, a down/up nudge, bluez pokes
   done
   fully_up || return 1
   # settle-verify: bluez may re-apply a remembered OFF as the adapter returns —
-  # be the stubborn last writer
+  # be the stubborn last writer (unless the user is the one switching it off)
   local k
   for k in 1 2 3 4; do
     sleep 2
+    blocked && return 2
     if timeout 4 bluetoothctl show 2>/dev/null | grep -q "Powered: yes"; then return 0; fi
     timeout 4 bluetoothctl power on >/dev/null 2>&1
     hciconfig hci0 up 2>/dev/null
   done
   timeout 4 bluetoothctl show 2>/dev/null | grep -q "Powered: yes"
 }
-heal(){
-  log "wedge detected ($1) — auto-healing"
-  notify "Bluetooth" "Restoring Bluetooth adapter..."
+heal(){  # $1 reason for the log; $2/$3 toast while working / on success (the expected toggle case is worded as a start, not a repair)
+  local rc=1
+  log "$1 — re-attaching"
+  notify "Bluetooth" "${2:-Restoring Bluetooth adapter...}"
   if /usr/local/sbin/bt-revive >>/var/log/bt-revive.log 2>&1; then
-    if power_up || { log "armed but slow to raise — second chance"; sleep 3; power_up; }; then
-      log "auto-heal SUCCESS (fully up)"; notify "Bluetooth" "Bluetooth restored."
-      last_fail=0; miss=0; expect=0; return
-    fi
+    power_up; rc=$?
+    if [ "$rc" = 1 ]; then log "armed but slow to raise — second chance"; sleep 3; power_up; rc=$?; fi
   fi
-  {
-    log "auto-heal FAILED"; notify "Bluetooth" "Bluetooth could not be restored — reboot may be needed."
-    last_fail=$(date +%s)
-  }
-  miss=0; expect=0
+  case "$rc" in
+    0) log "auto-heal SUCCESS (fully up)"; notify "Bluetooth" "${3:-Bluetooth is on.}"; last_fail=0;;
+    2) log "Bluetooth was switched off during the repair — leaving it off";;
+    *) log "auto-heal FAILED"; notify "Bluetooth" "Bluetooth could not be restored — reboot may be needed."; last_fail=$(date +%s);;
+  esac
+  # events that arrived meanwhile: the attach script's own cycle is filtered by its time window; a user's switch is kept
+  miss=0; expect=0; was_blocked=0; seen_pc=0; seen_hci=0; fresh=0
+  while read -t 1 -u 3 _ev; do note "$_ev"; done
 }
-exec 3< <(stdbuf -oL rfkill event 2>/dev/null)
-log "sentinel v3.6 up (event-driven; failure-only cooldown; power-up retry)"
+exec 3< <(stdbuf -oL rfkill event 2>/dev/null); RFPID=$!
+trap 'kill "$RFPID" 2>/dev/null' EXIT
+stand_down
+log "sentinel v3.9 up (event-driven; block events read; failure-only cooldown; power-up retry; bt_default idx ${PC_IDX:-?})"
 while true; do
   t=$FALLBACK; [ "$expect" = 1 ] && t=2
-  read -t "$t" -u 3 _ev
-  while read -t 0.2 -u 3 _more; do :; done
-  pgrep -f "bt[-]revive" >/dev/null && { miss=0; continue; }
-  if blocked; then was_blocked=1; expect=0; miss=0; continue; fi
-  if [ "$was_blocked" = 1 ]; then
-    was_blocked=0; expect=1; miss=0
-    log "unblock observed — fast-watch armed"; continue
+  read -t "$t" -u 3 _ev; rc=$?
+  if [ "$rc" = 0 ]; then note "$_ev"
+  elif [ "$rc" -le 128 ]; then log "rfkill event stream ended (rc $rc) — exiting so systemd restarts us"; exit 1; fi   # >128 = timeout
+  while read -t 0.2 -u 3 _more; do note "$_more"; done
+  stand_down
+  pgrep -x bt-revive >/dev/null && { miss=0; continue; }                  # a heal run by hand (by path, not "bash bt-revive")
+  if blocked; then was_blocked=1; expect=0; miss=0; seen_hci=0; continue; fi   # off on purpose: wait (seen_pc kept: the off was a user cycle)
+  if [ "$was_blocked" = 1 ] && [ "$seen_pc" = 0 ] && own_cycle "$(date +%s)"; then
+    # it was off and an attach started by hand turned it on with its own cycle just now: let that attach finish
+    was_blocked=0; fresh=1; expect=1; miss=0; continue
   fi
-  if fully_up; then expect=0; miss=0; continue; fi
+  if [ "$was_blocked" = 1 ] || [ "$seen_pc" = 1 ]; then
+    # the switch cycled BT_REG_ON: the firmware is gone and hci0 cannot come back on its own
+    heal "bt_default cycled (chip power-cycled, firmware lost)" "Starting Bluetooth..." "Bluetooth is on."
+    continue
+  fi
+  if [ "$seen_hci" = 1 ]; then seen_hci=0; expect=1; miss=0; log "hci rfkill soft-blocked (stale state?) — fast-watch armed"; continue; fi
+  if attaching; then fresh=1; expect=1; miss=0; continue; fi               # firmware load in progress: judge it when the window ends
+  if fully_up; then expect=0; miss=0; fresh=0; continue; fi
   if ! mac_ok; then reason="controller gone/null MAC"
-  elif [ "$expect" = 1 ]; then reason="no recovery after unblock"
+  elif [ "$fresh" = 1 ]; then reason="not up after a fresh attach"
+  elif [ "$expect" = 1 ]; then reason="hci block not cleared"
   else miss=0; continue; fi
   miss=$((miss+1)); [ "$miss" -lt 2 ] && continue
   now=$(date +%s); [ $((now-last_fail)) -lt "$COOLDOWN_FAIL" ] && continue
-  heal "$reason"
+  heal "wedge detected ($reason)"
 done

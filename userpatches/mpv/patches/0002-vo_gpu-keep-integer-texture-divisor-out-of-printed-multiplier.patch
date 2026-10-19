@@ -1,0 +1,48 @@
+Description: vo_gpu: keep the integer-texture divisor out of the printed multiplier
+ copy_image() folded 1/(2^bits-1) into img.multiplier and printed it into the
+ shader with "%f". For a 16-bit integer plane holding MSB-aligned 10-bit data
+ (P010, component_pad > 0) the multiplier is about 1.0039/65535 = 1.53e-5,
+ which "%f" prints as 0.000015: the plane comes out 2.1 % dark (1.7 % for
+ full-range or RGB 16-bit data). The divisor is now written into the shader
+ separately ("... * vec4(texture(...)).r / 65535.0"), and taken from the
+ texture's own component depth.
+ .
+ Affects any setup where vo_gpu samples a 16-bit integer texture: GPUs without
+ normalised 16-bit formats, or a hwdec interop that maps integer planes.
+ Measured on an Orange Pi 5B (Mali-G610): vo_gpu drew an integer-sampled P010
+ frame 2-3 % dark (37 dB against copy-back, max 7 8-bit steps); with this
+ change 79.9 dB, max one step, no bias.
+ .
+ Written with Claude (Anthropic): the LLM found the bug from a same-frame
+ picture comparison and wrote the change; the maintainer tested it.
+Author: defcom5-rockchip <286489597+defcom5-rockchip@users.noreply.github.com>
+Origin: vendor, Pi-Desktop
+Forwarded: not-yet
+Last-Update: 2026-10-09
+---
+diff --git a/video/out/gpu/video.c b/video/out/gpu/video.c
+index eabf917..2ced328 100644
+--- a/video/out/gpu/video.c
++++ b/video/out/gpu/video.c
+@@ -1429,13 +1429,17 @@ static void copy_image(struct gl_video *p, unsigned int *offset, struct image im
+         dst[i] = dst_fmt[*offset + i];
+     }
+ 
++    // Integer textures are normalised in the shader. The divisor stays out of
++    // the multiplier: folded in, a 16-bit one leaves a value around 1.5e-5,
++    // which "%f" prints as 0.000015, a 2 % error on the whole picture.
++    char norm[32] = "";
+     if (img.tex && img.tex->params.format->ctype == RA_CTYPE_UINT) {
+-        uint64_t tex_max = 1ull << p->ra_format.component_bits;
+-        img.multiplier *= 1.0 / (tex_max - 1);
++        uint64_t tex_max = 1ull << img.tex->params.format->component_depth[0];
++        snprintf(norm, sizeof(norm), " / %.1f", (double)(tex_max - 1));
+     }
+ 
+-    GLSLF("color.%s = %f * vec4(texture(texture%d, texcoord%d)).%s;\n",
+-          dst, img.multiplier, id, id, src);
++    GLSLF("color.%s = %f * vec4(texture(texture%d, texcoord%d)).%s%s;\n",
++          dst, img.multiplier, id, id, src, norm);
+ 
+     *offset += count;
+ }

@@ -1,14 +1,59 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<!-- Pi-Desktop placeholder icon: an app that downloads on first click (navy / cream / orange, the Plaid palette).
-     Filled shapes only, no strokes, so every SVG renderer draws it the same. -->
 <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
-  <rect x="4" y="4" width="56" height="56" rx="12" fill="#1b2a55"/>
-  <path d="M18 12h16l10 10v26H18z" fill="#f3e2b8"/>
-  <path d="M34 12v10h10z" fill="#1b2a55"/>
-  <rect x="23" y="28" width="16" height="2.4" rx="1.2" fill="#1b2a55"/>
-  <rect x="23" y="34" width="16" height="2.4" rx="1.2" fill="#1b2a55"/>
-  <rect x="23" y="40" width="10" height="2.4" rx="1.2" fill="#1b2a55"/>
-  <circle cx="49" cy="49" r="9.5" fill="#e85020"/>
-  <rect x="47.7" y="43.5" width="2.6" height="8.5" rx="1.3" fill="#f3e2b8"/>
-  <path d="M44.2 49.6 46.1 47.8 49 50.7 51.9 47.8 53.8 49.6 49 54.4z" fill="#f3e2b8"/>
+<!-- Plaid Pi placeholder icon for the office suite (downloads on first click). Original artwork for Plaid Pi,
+     CC BY-SA 4.0 like the rest of the Plaid Pi art: a light rounded tile with a fanned stack of three documents
+     (blue = text, green = spreadsheet, orange = slides) and the orange download badge the other placeholders carry.
+     Gradients and filled shapes only (no filters, no strokes), so every SVG renderer draws it the same. -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fffdf7"/>
+      <stop offset="1" stop-color="#e8e0cc"/>
+    </linearGradient>
+    <linearGradient id="page" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#f1efe8"/>
+    </linearGradient>
+    <linearGradient id="blue" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3d8bfd"/>
+      <stop offset="1" stop-color="#1f5fc9"/>
+    </linearGradient>
+    <linearGradient id="green" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3cc27a"/>
+      <stop offset="1" stop-color="#1e9152"/>
+    </linearGradient>
+    <linearGradient id="orange" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffa13d"/>
+      <stop offset="1" stop-color="#e8701a"/>
+    </linearGradient>
+  </defs>
+
+  <!-- tile with a thin darker rim and a soft bottom shadow -->
+  <rect x="4" y="5.2" width="56" height="56" rx="13" fill="#000" opacity="0.12"/>
+  <rect x="4" y="4" width="56" height="56" rx="13" fill="#cdbf9f"/>
+  <rect x="4.6" y="4.6" width="54.8" height="54.8" rx="12.4" fill="url(#tile)"/>
+
+  <!-- back sheet: slides (orange), tilted left -->
+  <g transform="translate(-3.5 1) rotate(-18 30 34)">
+    <path d="M17 16h17l7 7v25H17z" fill="url(#orange)"/>
+    <path d="M34 16v7h7z" fill="#ffffff" opacity="0.45"/>
+  </g>
+  <!-- middle sheet: spreadsheet (green), slight tilt -->
+  <g transform="translate(-1.5 0.5) rotate(-8 32 34)">
+    <path d="M19 15h17l7 7v26H19z" fill="url(#green)"/>
+    <path d="M36 15v7h7z" fill="#ffffff" opacity="0.45"/>
+  </g>
+  <!-- shadow under the front page -->
+  <path d="M22.4 15.6h17l8 8v27.2H22.4z" fill="#000" opacity="0.14"/>
+  <!-- front sheet: text document (white page, blue fold and lines) -->
+  <path d="M21 14h17l8 8v27H21z" fill="url(#page)"/>
+  <path d="M38 14v8h8z" fill="url(#blue)"/>
+  <rect x="25" y="26" width="17" height="2.6" rx="1.3" fill="url(#blue)"/>
+  <rect x="25" y="31.6" width="17" height="2.2" rx="1.1" fill="#9fb8de"/>
+  <rect x="25" y="36.6" width="17" height="2.2" rx="1.1" fill="#9fb8de"/>
+  <rect x="25" y="41.6" width="11" height="2.2" rx="1.1" fill="#9fb8de"/>
+
+  <!-- download badge (same as the other placeholders) -->
+  <circle cx="49" cy="49.5" r="10" fill="#ffffff" opacity="0.9"/>
+  <circle cx="49" cy="49.5" r="9" fill="#e85020"/>
+  <rect x="47.7" y="44" width="2.6" height="8.5" rx="1.3" fill="#f3e2b8"/>
+  <path d="M44.2 50.1 46.1 48.3 49 51.2 51.9 48.3 53.8 50.1 49 54.9z" fill="#f3e2b8"/>
 </svg>

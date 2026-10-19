@@ -1,2 +1,4 @@
 # Pi-Desktop: systemd-rfkill can restore a stale soft-block onto the reborn hci0 rfkill; clear it on creation
-SUBSYSTEM=="rfkill", ATTR{type}=="bluetooth", ATTR{soft}="0"
+# Only when the rfkill device appears (ACTION=="add"): without it the rule also fired on every block event and undid
+# Bluetooth-off and airplane mode.
+ACTION=="add", SUBSYSTEM=="rfkill", ATTR{type}=="bluetooth", ATTR{soft}="0"

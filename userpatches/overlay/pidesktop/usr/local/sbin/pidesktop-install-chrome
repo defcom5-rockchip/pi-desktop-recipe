@@ -51,4 +51,13 @@ fi
 [[ -x /usr/bin/google-chrome-stable ]] || { echo "E: google-chrome-stable is not installed"; exit 1; }
 # the launcher shipped with a generic browser icon (the image carries no Google artwork); now Chrome's own icon exists
 [[ -f $LAUNCHER ]] && sed -i 's/^Icon=web-browser$/Icon=google-chrome/' "$LAUNCHER"
+# Armbian's branding policies (armbian.com homepage, a read-only "Armbian" bookmarks folder, "Managed by your
+# organization"): moved out of the policy directories, as the image build does. Chrome reads EVERY file in
+# policies/managed and policies/recommended (config_dir_policy_loader.cc), so a rename in place is not enough.
+install -d /usr/share/pi-desktop/parked-policies/chrome
+for b in managed recommended; do
+	for f in /etc/opt/chrome/policies/$b/armbian.json /etc/opt/chrome/policies/$b/armbian.json.distrib; do
+		[[ -f $f ]] && mv -f "$f" "/usr/share/pi-desktop/parked-policies/chrome/$b-armbian.json" && echo "Moved Armbian's Chrome policy $f out of the policy directory"
+	done
+done
 echo "== done: google-chrome-stable $(dpkg-query -W -f='${Version}' google-chrome-stable)"

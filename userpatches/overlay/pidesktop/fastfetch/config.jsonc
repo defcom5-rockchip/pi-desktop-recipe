@@ -1,4 +1,4 @@
-// /etc/fastfetch/config.jsonc — Pi Desktop 4.0 "Plaid" system-wide fastfetch
+// /etc/fastfetch/config.jsonc — Plaid Pi 5.0 system-wide fastfetch
 // Users override by creating ~/.config/fastfetch/config.jsonc.
 // Logo: truecolor half-block tartan (works in any terminal, no sixel/kitty needed).
 // Regenerate the art with plaid_logo.py (kept next to this file in the recipe).
@@ -8,7 +8,9 @@
   "logo": {
     "type": "file-raw",
     "source": "/usr/share/pi-desktop/fastfetch/plaid.ans",
-    "width": 36,
+    // no "width": fastfetch 2.57 measures the 36-column logo itself and ADDS a configured width on top, which
+    // pushed the info column to column 78 and made the greeting 131 columns wide (it wrapped over the logo in any
+    // terminal narrower than that, e.g. with Large Text). Without it the info starts at column 42 (97 wide in all).
     "height": 21,
     "padding": { "top": 1, "left": 2, "right": 3 }
   },
@@ -24,8 +26,8 @@
     { "type": "title" },
     { "type": "custom", "key": " ", "format": "// no snaps · no mirage · built to run 24/7 //" },
 
-    { "type": "custom", "format": "{#1;38;2;232;80;32}// PI DESKTOP 4.0 - PLAID //" },
-    { "type": "command", "key": "DISTRO", "text": "sed -n '1{s/ [—-]\\{1,2\\} built.*//;p}' /etc/pi-desktop-manifest.txt 2>/dev/null || echo 'Pi Desktop 4.0 Plaid'" },
+    { "type": "custom", "format": "{#1;38;2;232;80;32}// PLAID PI 5.0 //" },
+    { "type": "command", "key": "DISTRO", "text": "sed -n '1{s/ \\(—\\|--\\{0,1\\}\\) built.*//;p}' /etc/pi-desktop-manifest.txt 2>/dev/null || echo 'Plaid Pi 5.0'" },
     { "type": "os",      "key": "BASE", "format": "{name} {version-id} {codename} · {arch}" },
     { "type": "host",    "key": "BOARD" },
     { "type": "kernel",  "key": "KERNEL" },

@@ -14,3 +14,7 @@ inputs/
 *.log
 __pycache__/
 *.pyc
+
+# Never published: the working tree keeps old versions and backups here
+parked/
+*.bak*

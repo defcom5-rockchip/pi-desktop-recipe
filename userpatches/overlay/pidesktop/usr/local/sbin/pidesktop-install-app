@@ -37,10 +37,17 @@ fetch_vscodium_key() {   # $1 = output keyring; exits 2 if the downloaded key's 
 }
 
 firefox_apply_pidesktop_pieces() {
-	echo "Applying Pi-Desktop's Firefox pieces (Mali GL launcher, VA-API prefs, neutral policy)"
-	install -d /usr/local/lib/pidesktop-firefox-mali
-	ln -sfn /usr/lib/aarch64-linux-gnu/mali/libGLESv2.so.2 /usr/local/lib/pidesktop-firefox-mali/libGL.so
-	ln -sfn /usr/lib/aarch64-linux-gnu/mali/libGLESv2.so.2 /usr/local/lib/pidesktop-firefox-mali/libGL.so.1
+	echo "Applying Plaid Pi's Firefox pieces (Mali video library + launcher, VA-API prefs, neutral policy)"
+	local D=/usr/local/lib/pidesktop-firefox-mali
+	install -d "$D"
+	if [[ -f $D/libpidesktop-ffmali.so.1 ]]; then           # shipped with the image (customize-image.sh)
+		ln -sfn libpidesktop-ffmali.so.1 "$D/libEGL.so"; ln -sfn libpidesktop-ffmali.so.1 "$D/libGL.so"
+		ln -sfn /usr/lib/aarch64-linux-gnu/mali/libGLESv2.so.2 "$D/libGL.so.1"   # Firefox's GPU probe, as before 5.0
+		rm -f /usr/local/lib/pidesktop-firefox-mali/libEGL.so.1                  # an early 5.0 test layout had it
+	else                                                    # older image: plain Mali GLES as libGL, as before
+		ln -sfn /usr/lib/aarch64-linux-gnu/mali/libGLESv2.so.2 "$D/libGL.so"
+		ln -sfn /usr/lib/aarch64-linux-gnu/mali/libGLESv2.so.2 "$D/libGL.so.1"
+	fi
 	install -m0755 "$STAGE/firefox" /usr/local/bin/firefox                      # ahead of /usr/bin in PATH: menu entries use it
 	install -Dm0644 "$STAGE/vaapi.js" /usr/lib/firefox/defaults/pref/vaapi.js   # survives package upgrades (dpkg leaves unknown files)
 	if [[ -f /etc/firefox/policies/policies.json && ! -L /etc/firefox/policies/policies.json ]] \

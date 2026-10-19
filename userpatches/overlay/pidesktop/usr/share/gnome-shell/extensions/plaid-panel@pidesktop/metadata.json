@@ -1,0 +1,12 @@
+{
+  "uuid": "plaid-panel@pidesktop",
+  "name": "Plaid Panel",
+  "description": "Colours GNOME's top bar to match the Plaid Pi wallpaper (its stylesheet only; nothing else).",
+  "shell-version": [
+    "48",
+    "49",
+    "50"
+  ],
+  "version": 1,
+  "url": "https://github.com/defcom5-rockchip/pi-desktop-recipe"
+}
