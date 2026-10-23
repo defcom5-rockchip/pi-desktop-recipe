@@ -7,7 +7,7 @@
 # The recipe installs 36 pre-built files that are too large (or not source) for git: the rebuilt .deb packages
 # under overlay/pidesktop/debs/ (gnome-control-center, Rhythmbox, PipeWire, MPP, rockchip-vaapi, mpv, gst-plugins-good,
 # pro-updates), the ARM Mali driver package, the patched libmali hook, the libpidesktop-ffmali library for Firefox and
-# the screensaver video. They are attached to the GitHub release inputs-5.0 instead (asset names there have "~"
+# the screensaver video. They are attached to the GitHub release inputs-5.5 instead (asset names there have "~"
 # replaced by "."); this script downloads each one into place and checks it against userpatches/INPUTS.sha256.
 #
 #   ./fetch-inputs.sh                       download from the GitHub release (default URL below)
@@ -21,7 +21,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 UP="$HERE/userpatches"
 SUMS="$UP/INPUTS.sha256"
-BASE="${INPUTS_URL:-https://github.com/defcom5-rockchip/pi-desktop-recipe/releases/download/inputs-5.0}"
+BASE="${INPUTS_URL:-https://github.com/defcom5-rockchip/pi-desktop-recipe/releases/download/inputs-5.5}"
 BASE="${BASE%/}"
 
 for t in curl sha256sum; do

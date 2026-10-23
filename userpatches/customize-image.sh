@@ -1,11 +1,11 @@
 #!/bin/bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 defcom5-rockchip (Pi-Desktop). See LICENSE in the recipe repository.
-# Plaid Pi 5.0 layer — runs as root inside the arm64 rootfs chroot at the end of Armbian's customize step.
+# Plaid Pi 5.5 layer — runs as root inside the arm64 rootfs chroot at the end of Armbian's customize step.
 # Args: RELEASE LINUXFAMILY BOARD BUILD_DESKTOP. Overlay (userpatches/overlay) is bind-mounted read-only at /tmp/overlay.
 RELEASE=$1; LINUXFAMILY=$2; BOARD=$3; BUILD_DESKTOP=$4
 OV=/tmp/overlay/pidesktop
-PDV="${PIDESKTOP_VERSION:-$(cat /etc/pi-desktop-release 2>/dev/null)}"; PDV="${PDV:-5.0}"   # set by the config hook pre_customize_image__pidesktop_version
+PDV="${PIDESKTOP_VERSION:-$(cat /etc/pi-desktop-release 2>/dev/null)}"; PDV="${PDV:-5.5}"   # set by the config hook pre_customize_image__pidesktop_version
 GPU="${PIDESKTOP_GPU_STACK:-mali}"
 export DEBIAN_FRONTEND=noninteractive APT_LISTCHANGES_FRONTEND=none
 # dpkg must never stop at a conffile prompt in here (no stdin): keep the installed version of a changed conffile.
@@ -64,7 +64,8 @@ cat > /etc/systemd/system/user@.service.d/pidesktop-realtime.conf <<-'U'
 U
 log "realtime: user@.service drop-in (RTPRIO 95, NICE -15, MEMLOCK inf)"
 if ls "$OV"/debs/pipewire/*.deb >/dev/null 2>&1; then
-	# PipeWire 1.6.9 + WirePlumber 0.5.17 (Debian sid packaging rebuilt for resolute arm64) — ABI-compatible bump over 1.6.2/0.5.13
+	# PipeWire 1.6.10 + WirePlumber 0.5.18 (upstream 1.6.10 on Debian's 1.6.9-2 packaging + Debian's 0.5.18-1, rebuilt for
+	# resolute arm64 as ~pd55; 5.0 shipped 1.6.9/0.5.17 ~pd31) — ABI-compatible bugfix bump over Ubuntu's 1.6.2/0.5.13
 	apt-get install -y -qq --allow-downgrades "$OV"/debs/pipewire/*.deb >/dev/null \
 		&& log "pipewire/wireplumber from overlay: $(dpkg-query -W -f='${Version}' pipewire) / $(dpkg-query -W -f='${Version}' wireplumber)" \
 		|| warn "overlay pipewire debs failed to install — image stays on stock $(dpkg-query -W -f='${Version}' pipewire)"
@@ -187,7 +188,7 @@ if ls "$OV"/debs/media/*.deb >/dev/null 2>&1; then
 		apt-get install -y -qq --allow-downgrades -o Dpkg::Options::=--force-confnew "$mpv_deb" >/dev/null && log "mpv: $(basename "$mpv_deb" _arm64.deb)" || warn "Pi-Desktop mpv deb failed; Ubuntu's mpv stays (copy-back)"
 	fi
 	for p in librockchip-mpp1 librockchip-mpp-dev librockchip-vpu1 rockchip-vaapi rockchip-vaapi-driver librga2 libv4l-rkmpp; do dpkg -s "$p" >/dev/null 2>&1 && apt-mark hold "$p" >/dev/null; done
-	# Hold mpv only when it is Pi-Desktop's build (Ubuntu's 0.41.0-2ubuntu4 + two patches, version +pd1): any Ubuntu
+	# Hold mpv only when it is Pi-Desktop's build (Ubuntu's 0.41.0-2ubuntu4 + two patches, version +pdN): any Ubuntu
 	# update of mpv (0.41.0-2ubuntu4.x sorts above +pd1) would replace it, and with zero-copy on and the 10-bit profile
 	# removed (below), Ubuntu's mpv draws 10-bit near-black (KNOWN-ISSUES VID-7). The price: Ubuntu's mpv fixes arrive
 	# only with a Pi-Desktop rebuild. Never hold Ubuntu's own mpv (that would freeze it off security updates).
@@ -247,7 +248,7 @@ apt-get install -y -qq --no-install-recommends chromium chromium-sandbox >/dev/n
 # from the PPA pinned above, with the Mali/VA-API pieces below applied on the user's own machine. Purge any copy a tier left.
 dpkg -s firefox >/dev/null 2>&1 && { apt-get purge -y -qq firefox >/dev/null 2>&1 && log "firefox: removed from the image (first-click installer instead)" || warn "firefox purge failed"; }
 install -d /etc/chromium.d
-install -m0644 -o root -g root "$OV"/etc/chromium.d/* -t /etc/chromium.d/ 2>/dev/null
+install -m0644 -o root -g root "$OV"/etc/chromium.d/pidesktop-vaapi -t /etc/chromium.d/ 2>/dev/null   # by name: the launcher sources every file there
 # Firefox on the blob. Plaid Pi ships no Firefox (Mozilla trademark: stock builds only, installed on first click); what
 # ships is our own library that the launcher loads into Firefox only: libpidesktop-ffmali (overlay firefox/ffmali/README).
 # Firefox loads EGL and GL by the names libEGL.so(.1) / libGL.so(.1); in this private directory they are that library,
@@ -360,11 +361,13 @@ install -Dm0644 "$OV"/backgrounds/pi-desktop-wallpapers.xml /usr/share/gnome-bac
 if apt-get install -y -qq --no-install-recommends python3-nautilus >/dev/null 2>&1; then
 	install -Dm0644 -o root -g root "$OV"/usr/share/nautilus-python/extensions/pidesktop-open-terminator.py \
 		/usr/share/nautilus-python/extensions/pidesktop-open-terminator.py && log "Files: Open in Terminator add-on"
+	install -Dm0644 -o root -g root "$OV"/usr/share/nautilus-python/extensions/pidesktop-netdrive.py \
+		/usr/share/nautilus-python/extensions/pidesktop-netdrive.py && log "Files: Add as Network Drive add-on"
 else
-	warn "python3-nautilus install failed — no Open in Terminator in Files"
+	warn "python3-nautilus install failed — no Open in Terminator or Add as Network Drive in Files"
 fi
 # Terminator look (approved live 2026-09-26): navy/cream/orange Plaid palette, Ubuntu Sans Mono 13, window
-# 1480x800 = 147 cols, room for the fastfetch greeting (its info column starts at col 78). Replaces the transparent-black skel config Armbian's desktop base lays
+# 1480x1040 = 147 cols, room for the fastfetch greeting (its info column starts at col 78). Replaces the transparent-black skel config Armbian's desktop base lays
 # down. Skel, not /etc/xdg: a user config always wins over the system one (no merge), and Terminator only reads the first
 # existing $XDG_CONFIG_DIRS entry. Reaches new accounts only.
 install -Dm0644 -o root -g root "$OV"/etc/skel/.config/terminator/config /etc/skel/.config/terminator/config && log "terminator: Plaid config in /etc/skel"
@@ -456,6 +459,17 @@ apt-get install -y -qq --no-install-recommends gnome-system-monitor iw fastfetch
 dpkg -s pkexec >/dev/null 2>&1 || apt-get install -y -qq --no-install-recommends pkexec >/dev/null || warn "pkexec install failed (Killswitch needs it)"
 install -Dm0755 -o root -g root "$OV"/usr/local/bin/killswitch /usr/local/bin/killswitch
 install -Dm0644 -o root -g root "$OV"/usr/local/share/applications/org.pidesktop.Killswitch.desktop /usr/local/share/applications/org.pidesktop.Killswitch.desktop
+# Network Drive (Plaid Pi's, GPL-3.0-or-later; from 5.5): adds a NAS share as a kernel CIFS mount under /mnt/NAME
+# (one /etc/fstab line between "# pidesktop-netdrive NAME" markers, systemd automount, unmounted after 15 idle
+# minutes, never blocks boot). Films opened through GVfs (smb://) are read without read-ahead and skip when the NAS
+# pauses; the kernel mount reads ahead 32 MiB for every program. The dialog collects the details; the root helper
+# (pkexec) takes the password on stdin and keeps it in /etc/pidesktop/netdrive/NAME.cred (0600). cifs-utils comes
+# with the *.local block below.
+install -Dm0755 -o root -g root "$OV"/usr/local/sbin/pidesktop-netdrive /usr/local/sbin/pidesktop-netdrive
+install -Dm0755 -o root -g root "$OV"/usr/local/bin/pidesktop-netdrive-dialog /usr/local/bin/pidesktop-netdrive-dialog
+install -Dm0644 -o root -g root "$OV"/usr/share/polkit-1/actions/org.pidesktop.netdrive.policy /usr/share/polkit-1/actions/org.pidesktop.netdrive.policy
+install -Dm0644 -o root -g root "$OV"/usr/local/share/applications/org.pidesktop.NetworkDrive.desktop /usr/local/share/applications/org.pidesktop.NetworkDrive.desktop
+log "network drive: helper, dialog, polkit action, launcher"
 # Pro Updates 1.5.0 (github.com/defcom5-rockchip/pro-updates, GPL-3.0-or-later): the update window. A .deb, so dpkg
 # tracks it and `apt remove pro-updates` works. It adds NO Flatpak remote (Flathub only per user, after asking), runs
 # nothing in the background, and does root work through one pkexec helper. Its Ubuntu Pro section says "not checked"
@@ -619,7 +633,7 @@ if [[ -f $BR/pi-desktop.plymouth && -f $BR/plymouth-bgrt-fallback.png && -d /usr
 		"$(cat /usr/share/plymouth/themes/pi-desktop/pi-desktop.plymouth /usr/share/plymouth/themes/pi-desktop/bgrt-fallback.png | sha256sum | cut -c1-16)" \
 		> /etc/initramfs-tools/conf.d/zz-pidesktop-theme
 	update-initramfs -u -k all >/dev/null 2>&1 || true
-	log "plymouth: pi-desktop theme = $(basename "$(readlink -f /etc/alternatives/default.plymouth)") (initrd cache key $(cut -d' ' -f6 /etc/initramfs-tools/conf.d/zz-pidesktop-theme))"
+	log "plymouth: pi-desktop theme = $(basename "$(readlink -f /etc/alternatives/default.plymouth)") (initrd cache key $(cut -d' ' -f7 /etc/initramfs-tools/conf.d/zz-pidesktop-theme))"
 else
 	warn "plymouth: pi-desktop theme assets missing — Ubuntu spinner stays"
 fi
@@ -631,8 +645,8 @@ cat > /etc/update-motd.d/05-pi-desktop <<-M
 M
 chmod +x /etc/update-motd.d/05-pi-desktop
 
-# ---------------------------------------------------------------- defense-in-depth: 2.0.x modprobe blacklist (esp4/6, ipcomp, rds) — modules unused on a desktop
-install -d /etc/modprobe.d && install -m0644 -o root -g root "$OV"/etc/modprobe.d/*.conf -t /etc/modprobe.d/ 2>/dev/null && log "modprobe.d: $(ls "$OV"/etc/modprobe.d/)"
+# ---------------------------------------------------------------- CVE mitigations: modprobe blocks (esp4/6, ipcomp/6, rds, rds_tcp; 5.5: nfnetlink_queue, openvswitch) — modules unused on a desktop
+install -d /etc/modprobe.d && install -m0644 -o root -g root "$OV"/etc/modprobe.d/*.conf -t /etc/modprobe.d/ 2>/dev/null && log "modprobe.d: $(ls "$OV"/etc/modprobe.d/)" || warn "modprobe.d: CVE mitigation files NOT installed"
 
 # ---------------------------------------------------------------- boot args: CMA 512M (framework bootenv ships cma=256M; belt and braces with userpatches/bootenv)
 # + FRL FLT_update polling off (kernel patch 0008): the older BSP never polled after FRL training and ran 4K@120 24/7 on

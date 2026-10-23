@@ -1,4 +1,6 @@
 # Pi-Desktop: Chromium 155 (xtradeb VA-API build) -> rockchip-vaapi -> MPP. Verified on BSP 6.1 for 8-bit and 10-bit VP9 (2026-09-21)
 # and 8-bit HEVC on Plaid (2026-09-22). --render-node-override: rkr7.2 registers an RKNPU render node (renderD129) and Chromium's
 # VA-API setup otherwise picks it ("Preferred drm_render_node not found, picking rknpu") -> no hardware decode.
-export CHROMIUM_FLAGS="$CHROMIUM_FLAGS --ozone-platform-hint=wayland --render-node-override=/dev/dri/renderD128 --enable-features=AcceleratedVideoDecoder,AcceleratedVideoDecodeLinuxGL,AcceleratedVideoDecodeLinuxZeroCopyGL,PlatformHEVCDecoderSupport"
+# JointMediaOptimizer:SrcMediaMultiBufferPreloadSeconds/60 (5.5): keep 60 s of a local or network-drive video ahead
+# instead of 10 (Chromium caps it at 50 MiB); checked present in Chromium/Chrome 155. Unknown feature parameters are ignored.
+export CHROMIUM_FLAGS="$CHROMIUM_FLAGS --ozone-platform-hint=wayland --render-node-override=/dev/dri/renderD128 --enable-features=AcceleratedVideoDecoder,AcceleratedVideoDecodeLinuxGL,AcceleratedVideoDecodeLinuxZeroCopyGL,PlatformHEVCDecoderSupport,JointMediaOptimizer:SrcMediaMultiBufferPreloadSeconds/60"

@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+[Desktop Entry]
+Type=Application
+Name=Network Drive
+Comment=Add a NAS share as a network drive, for smooth playback from Files, browsers and mpv
+Exec=/usr/local/bin/pidesktop-netdrive-dialog
+Icon=folder-remote
+Terminal=false
+Categories=System;FileTools;
+Keywords=nas;smb;cifs;samba;share;network;drive;mount;
+StartupNotify=true

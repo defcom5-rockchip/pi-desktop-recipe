@@ -26,5 +26,13 @@ for f in /etc/os-release /usr/lib/os-release; do
 	set_kv "$f" SUPPORT_URL "https://github.com/defcom5-rockchip/pi-desktop/issues"
 	set_kv "$f" BUG_REPORT_URL "https://github.com/defcom5-rockchip/pi-desktop/issues"
 	set_kv "$f" PRIVACY_POLICY_URL "https://defcom5-rockchip.github.io/pi-desktop/privacy.html"
+	if grep -q "^ARMBIAN_PRETTY_NAME=" "$f"; then set_kv "$f" ARMBIAN_PRETTY_NAME "Plaid Pi $VER"; fi
 done
+# Armbian's board package writes the build's VENDOR into /etc/armbian-release; its first-login wizard greets with it
+# ("Welcome to ...") and its cached copy kept an old URL. Same for /etc/issue.net (shown before an ssh login).
+A=/etc/armbian-release
+if [ -f "$A" ]; then
+	sed -i -e 's|^VENDOR=.*|VENDOR="Plaid Pi"|' -e 's|^VENDORURL=.*|VENDORURL="https://defcom5-rockchip.github.io/pi-desktop/"|' "$A"
+fi
+printf 'Plaid Pi %s\n' "$VER" > /etc/issue.net
 exit 0

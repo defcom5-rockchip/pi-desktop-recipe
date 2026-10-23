@@ -3,6 +3,7 @@
 # Pi-Desktop: "Open in Terminator" in the Files right-click menu.
 # Files 50 has no Open in Terminal of its own, and Terminator (the image's terminal) ships no Files integration.
 # Shown on the folder background and on a single selected folder; opens Terminator in that folder.
+import shutil
 import subprocess
 
 import gi
@@ -17,14 +18,20 @@ def _local_path(file_info):
     return location.get_path() if location is not None else None
 
 
+def _spawn(argv):
+    """Start argv in its own systemd scope: Files runs as a D-Bus service (org.gnome.Nautilus.service) and everything
+    in that service is stopped when Files exits, which would close the window it opened. Plain start without systemd-run."""
+    run = shutil.which("systemd-run")
+    cmd = [run, "--user", "--scope", "--collect", "--quiet", "--"] + argv if run else argv
+    try:
+        subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         start_new_session=True)
+    except OSError:
+        pass
+
+
 def _open(_item, path):
-    subprocess.Popen(
-        ["terminator", "--working-directory", path],
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
+    _spawn(["terminator", "--working-directory", path])
 
 
 def _item(name, path):

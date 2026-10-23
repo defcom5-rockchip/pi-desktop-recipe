@@ -1,0 +1,222 @@
+#!/bin/bash
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 defcom5-rockchip (Plaid Pi). See LICENSE in the recipe repository.
+# pidesktop-netdrive — add, test, remove and list network drives (SMB/CIFS shares) as kernel mounts. Run as root (pkexec).
+# Why: files opened from a GVfs smb:// location are read through gvfsd-fuse with no read-ahead, so a NAS that pauses for a
+# few seconds makes a film skip, with the sound cutting out. A kernel CIFS mount reads ahead (rasize) and every program
+# — Firefox, Chrome, mpv, Files — gets that cushion. Each drive is one /etc/fstab line after a marker comment, mounted on
+# first access by a systemd automount under /mnt/NAME and unmounted again after 15 idle minutes; it never blocks boot.
+# The login is stored in /etc/pidesktop/netdrive/NAME.cred (root only, 0600), read from stdin, never from the command line.
+#
+# Usage: pidesktop-netdrive add NAME //SERVER/SHARE [--user USER] [--domain DOMAIN] [--rw] [--hide]   (password on stdin)
+#        pidesktop-netdrive test NAME
+#        pidesktop-netdrive remove NAME
+#        pidesktop-netdrive list
+# Exit codes: 0 ok, 2 bad argument or refused change (nothing changed), 3 mount failed (the reason is printed; a failed
+#             add puts /etc/fstab and the login back as they were),
+#             4 not found, 5 busy (another change is running).
+set -euo pipefail
+export LC_ALL=C          # [a-z] means a-z, whatever locale pkexec passed through
+umask 077
+LOG=/var/log/pidesktop-netdrive.log
+CRED_DIR=/etc/pidesktop/netdrive
+FSTAB=/etc/fstab
+MARK="# pidesktop-netdrive"
+TMPF="" TMPC="" BAKF="" BAKC="" REASON="" PENDING=0
+cleanup() { if [[ $PENDING -eq 1 ]]; then rollback; fi; rm -f "$TMPF" "$TMPC" "$BAKF" "$BAKC"; }
+trap cleanup EXIT
+trap 'exit 3' HUP INT TERM   # pkexec sends SIGTERM if the window dies: undo a half-made drive via the EXIT trap
+
+log() { echo "$(date '+%F %T') $*" >> "$LOG"; }
+die() { echo "E: $2" >&2; log "error: $2"; exit "$1"; }
+need_root() { [[ $EUID -eq 0 ]] || die 2 "run as root (pkexec $0 …)"; }
+lock() { exec 9>/run/pidesktop-netdrive.lock; flock -w 30 9 || die 5 "another network drive change is running"; }
+valid_name() { [[ $1 =~ ^[a-z0-9][a-z0-9-]{0,31}$ ]] || die 2 "drive name must be 1-32 characters: a-z, 0-9 and '-'"; }
+unit_of() { systemd-escape --path "/mnt/$1"; }
+have_drive() { grep -qxF "$MARK $1" "$FSTAB"; }
+
+fstab_escape() {   # fstab(5): spaces, tabs and backslashes in a field are written as octal escapes (backslash first)
+	local s=$1; s=${s//\\/\\134}; s=${s// /\\040}; s=${s//$'\t'/\\011}; printf '%s' "$s"
+}
+fstab_unescape() {   # the inverse of fstab_escape only (\134 last, so an escaped backslash can't start a new escape)
+	local s=$1; s=${s//\\040/ }; s=${s//\\011/$'\t'}; s=${s//\\134/\\}; printf '%s' "$s"
+}
+
+caller_ids() {   # uid/gid of the user who asked (pkexec sets PKEXEC_UID; sudo sets SUDO_UID); root only as a last resort
+	local uid=${PKEXEC_UID:-${SUDO_UID:-0}}
+	echo "$uid $(id -g "$uid" 2>/dev/null || echo 0)"
+}
+
+strip_block() {   # stdin → stdout without NAME's marker and the cifs line for /mnt/NAME right after it (only if it is ours)
+	awk -v m="$MARK $1" -v t="/mnt/$1" '
+		held != "" { if ($2 == t && $3 == "cifs") { held = ""; next } print held; held = "" }
+		$0 == m   { held = $0; next }
+		          { print }
+		END       { if (held != "") print held }'
+}
+
+install_fstab() {   # $1 = candidate file; refuse only errors the current fstab doesn't already have, then swap in atomically
+	local cand=$1 before after
+	before=$(findmnt --verify --tab-file "$FSTAB" 2>&1 | grep -F '[E]' | sort -u || true)
+	after=$(findmnt --verify --tab-file "$cand" 2>&1 | grep -F '[E]' | sort -u || true)
+	if [[ -n $(comm -13 <(printf '%s\n' "$before") <(printf '%s\n' "$after") | grep -v '^$' || true) ]]; then
+		PENDING=0; die 2 "The change would make /etc/fstab invalid. Nothing was changed."
+	fi
+	chmod 0644 "$cand"; mv "$cand" "$FSTAB"; TMPF=""
+}
+
+mount_reason() {   # $1 = name, $2 = server: why the last mount attempt failed, from the unit's and the kernel's log
+	local name=$1 server=$2 lines
+	lines=$( { journalctl -u "$(unit_of "$name").mount" --since "-90 s" --no-pager -o cat 2>/dev/null || true
+	           journalctl -k --since "-90 s" --no-pager -o cat 2>/dev/null | { grep -F "$server" || true; } ; } |
+	         { grep -E -i -e "CIFS|mount error|could not resolve|timed out|refused" || true; } | tail -4)
+	if grep -q -E -e "STATUS_LOGON_FAILURE|error\(13\)|Permission denied" <<<"$lines"; then
+		echo "The server refused the login. Check the user name and password, and that this user may open the share."
+	elif grep -q -E -i -e "could not resolve|resolve address" <<<"$lines"; then
+		echo "The server name could not be found. Check the name, or use the NAS's IP address."
+	elif grep -q -E -i -e "-112|-113|-111|unable to connect|no route|host is down|timed out" <<<"$lines"; then
+		echo "The server did not answer. Is it switched on, and is the name right?"
+	elif grep -q -E -e "STATUS_BAD_NETWORK_NAME|error\(2\)" <<<"$lines"; then
+		echo "The server has no share by that name."
+	else
+		echo "The drive could not be mounted.${lines:+ $(tr '\n' ' ' <<<"$lines")}"
+	fi
+}
+
+try_mount() {   # $1 = name; trigger the automount and report; on failure REASON says why and it returns 1
+	local name=$1 mp="/mnt/$1" server ra
+	server=$(awk -v t="$mp" '$2 == t && $3 == "cifs" { split($1, a, "/"); print a[3]; exit }' "$FSTAB")
+	systemctl start "$(unit_of "$name").automount" 2>/dev/null || true
+	if ! timeout 35 stat -f "$mp" >/dev/null 2>&1 || ! findmnt -n -t cifs "$mp" >/dev/null 2>&1; then
+		REASON=$(mount_reason "$name" "${server:-?}"); return 1
+	fi
+	# cifs names its backing device "cifs-N", not by device number; report the read-ahead the mount was given (rasize)
+	ra=$( { findmnt -no OPTIONS -t cifs "$mp" 2>/dev/null || true; } | tr , '\n' | sed -n 's/^rasize=//p' | head -1)
+	ra=$(( ${ra:-0} / 1024 ))
+	echo "OK: $mp mounted (read-ahead ${ra} kB)"
+	log "test $name: mounted, read-ahead ${ra} kB"
+}
+do_test() { try_mount "$1" || die 3 "$REASON"; }
+
+rollback() {   # put /etc/fstab, the login and the units back as they were before this add (backups made just before)
+	PENDING=0
+	systemctl stop "$(unit_of "$name").mount" "$(unit_of "$name").automount" 2>/dev/null || true
+	umount -l "/mnt/$name" 2>/dev/null || true
+	if [[ -n $BAKF ]]; then chmod 0644 "$BAKF"; mv "$BAKF" "$FSTAB"; BAKF=""; fi
+	if [[ -n $BAKC ]]; then mv "$BAKC" "$cred"; BAKC=""; else rm -f "$cred"; fi
+	if [[ ${mp_new:-0} -eq 1 ]]; then rmdir "/mnt/$name" 2>/dev/null || true; fi
+	systemctl daemon-reload 2>/dev/null || true
+	systemctl reset-failed "$(unit_of "$name").mount" "$(unit_of "$name").automount" 2>/dev/null || true
+	if [[ ${readd:-0} -eq 1 ]]; then systemctl start "$(unit_of "$name").automount" 2>/dev/null || true; fi
+	log "add $name undone${REASON:+: $REASON}"
+}
+
+cmd=${1:-}; shift || true
+case "$cmd" in
+add)
+	need_root; lock
+	[[ $# -ge 2 ]] || die 2 "usage: add NAME //SERVER/SHARE [--user USER] [--domain DOMAIN] [--rw] [--hide]"
+	name=$1 unc=$2; shift 2; valid_name "$name"
+	unc=${unc#smb:}   # accept smb://server/share as typed into Files
+	[[ $unc =~ ^//([A-Za-z0-9._-]+)/([^/]+)/?$ ]] || die 2 "the share must look like //server/share"
+	server=${BASH_REMATCH[1]} share=${BASH_REMATCH[2]}
+	[[ $share != *[[:cntrl:],=]* ]] || die 2 "share names with commas, '=' or control characters are not supported"
+	user="" domain="" access=ro hide=0
+	while [[ $# -gt 0 ]]; do
+		case "$1" in
+			--user|--domain) [[ $# -ge 2 ]] || die 2 "$1 needs a value"; if [[ $1 == --user ]]; then user=$2; else domain=$2; fi; shift 2 ;;
+			--rw) access=rw; shift ;;
+			--hide) hide=1; shift ;;
+			*) die 2 "unknown option $1" ;;
+		esac
+	done
+	[[ -z $user || $user =~ ^[A-Za-z0-9._@\\-]{1,64}$ ]] || die 2 "The user name may only use letters, digits and . _ - @ \\"
+	[[ -z $domain || $domain =~ ^[A-Za-z0-9._-]{1,64}$ ]] || die 2 "domain has characters this tool does not accept"
+	pass=""; IFS= read -r pass || true   # one line on stdin (a final line without a newline counts); empty = guest
+	read -r uid gid <<<"$(caller_ids)"
+	if [[ $access == rw ]]; then fmode=0640 dmode=0750; else fmode=0440 dmode=0550; fi   # the caller's files only
+
+	# 1. the new login, prepared next to its final place (not live yet)
+	install -d -m 0755 -o root -g root /etc/pidesktop
+	install -d -m 0700 -o root -g root "$CRED_DIR"
+	cred="$CRED_DIR/$name.cred"
+	if [[ -n $user ]]; then
+		TMPC=$(mktemp "$CRED_DIR/.cred.XXXXXX")
+		{ printf 'username=%s\n' "$user"; printf 'password=%s\n' "$pass"; [[ -n $domain ]] && printf 'domain=%s\n' "$domain"; } > "$TMPC"
+		chmod 0600 "$TMPC"; auth="credentials=$cred"
+	else
+		auth="guest"
+	fi
+	unset pass
+
+	# 2. one candidate fstab: the old block for NAME (if any) out, the new one in; verified before anything changes
+	label=$(python3 -I -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1]))' "$share on $server")
+	opts="$auth,$access,uid=$uid,gid=$gid,file_mode=$fmode,dir_mode=$dmode,iocharset=utf8"
+	opts+=",cache=loose,actimeo=60,rsize=4194304,rasize=33554432,nobrl,soft,echo_interval=15,nosuid,nodev,noexec"
+	opts+=",_netdev,noauto,nofail,x-systemd.automount,x-systemd.idle-timeout=15min,x-systemd.mount-timeout=30s"
+	[[ $hide -eq 1 ]] || opts+=",x-gvfs-show,x-gvfs-name=$label,x-gvfs-icon=folder-remote"
+	line="$(fstab_escape "//$server/$share") /mnt/$name cifs $opts 0 0"
+	readd=0; have_drive "$name" && readd=1
+	if [[ $readd -eq 0 ]]; then   # /mnt/NAME must not already be used by something else
+		mountpoint -q "/mnt/$name" 2>/dev/null && die 2 "/mnt/$name is already in use; choose another drive name"
+		[[ ! -e /mnt/$name || -d /mnt/$name ]] || die 2 "/mnt/$name exists and is not a folder; choose another drive name"
+		awk -v t="/mnt/$name" '$1 !~ /^#/ && $2 == t { f = 1 } END { exit !f }' "$FSTAB" \
+			&& die 2 "/etc/fstab already mounts something at /mnt/$name; choose another drive name"
+	fi
+	TMPF=$(mktemp /etc/.fstab.pidesktop.XXXXXX)
+	strip_block "$name" < "$FSTAB" > "$TMPF"
+	[[ -z $(tail -c1 "$TMPF") ]] || echo >> "$TMPF"
+	printf '%s\n%s\n' "$MARK $name" "$line" >> "$TMPF"
+	# what to put back if the new drive does not mount (a wrong password must not leave a broken drive behind)
+	BAKF=$(mktemp /etc/.fstab.pidesktop-bak.XXXXXX); cp -p "$FSTAB" "$BAKF"
+	if [[ -f $cred ]]; then BAKC=$(mktemp "$CRED_DIR/.cred-bak.XXXXXX"); cp -p "$cred" "$BAKC"; fi
+	mp_new=0; [[ -e /mnt/$name ]] || mp_new=1
+	PENDING=1   # from here on, any exit (an error, a signal) puts everything back
+	install_fstab "$TMPF"
+
+	# 3. live: the login, then the units
+	if [[ -n $TMPC ]]; then mv "$TMPC" "$cred"; TMPC=""; else rm -f "$cred"; fi
+	if [[ $readd -eq 1 ]]; then systemctl stop "$(unit_of "$name").mount" "$(unit_of "$name").automount" 2>/dev/null || true; fi
+	install -d -m 0755 "/mnt/$name"
+	systemctl daemon-reload
+	log "add $name: //$server/$share ($access, ${user:-guest}, uid $uid)"
+	if try_mount "$name"; then
+		PENDING=0; rm -f "$BAKF" "$BAKC"; BAKF="" BAKC=""
+	else   # not mounted: put fstab, the login and the units back as they were, then say why
+		rollback
+		die 3 "$REASON Nothing was changed."
+	fi
+	;;
+test)
+	need_root; [[ $# -eq 1 ]] || die 2 "usage: test NAME"; valid_name "$1"
+	have_drive "$1" || die 4 "no network drive named $1"
+	do_test "$1"
+	;;
+remove)
+	need_root; lock; [[ $# -eq 1 ]] || die 2 "usage: remove NAME"; valid_name "$1"; name=$1
+	have_drive "$name" || die 4 "no network drive named $name"
+	TMPF=$(mktemp /etc/.fstab.pidesktop.XXXXXX)
+	strip_block "$name" < "$FSTAB" > "$TMPF"
+	install_fstab "$TMPF"
+	systemctl stop "$(unit_of "$name").mount" "$(unit_of "$name").automount" 2>/dev/null || true
+	umount -l "/mnt/$name" 2>/dev/null || true
+	rm -f "$CRED_DIR/$name.cred"
+	rmdir "/mnt/$name" 2>/dev/null || true
+	systemctl daemon-reload
+	systemctl reset-failed "$(unit_of "$name").mount" "$(unit_of "$name").automount" 2>/dev/null || true
+	log "remove $name"
+	echo "Removed $name"
+	;;
+list)   # no root needed: fstab is world-readable and no secret is printed; NAME <tab> //server/share <tab> /mnt/NAME <tab> state
+	awk -v m="$MARK" '
+		index($0, m " ") == 1 { name = substr($0, length(m) + 2); if ((getline nxt) > 0) { split(nxt, f, /[ \t]+/)
+		                        if (f[3] == "cifs" && f[2] == "/mnt/" name) print name "\t" f[1] "\t" f[2] } }' "$FSTAB" |
+	while IFS=$'\t' read -r name src mp; do
+		src=$(fstab_unescape "$src"); src=${src//[[:cntrl:]]/?}
+		state="not mounted"; findmnt -n -t cifs "$mp" >/dev/null 2>&1 && state="mounted"
+		printf '%s\t%s\t%s\t%s\n' "$name" "$src" "$mp" "$state"
+	done
+	;;
+*)
+	sed -n '11,14p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac

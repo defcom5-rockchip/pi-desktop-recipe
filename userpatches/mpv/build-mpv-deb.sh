@@ -1,15 +1,15 @@
 #!/bin/bash
-# Build Ubuntu's mpv (26.04 "resolute", source 0.41.0-2ubuntu4) with the Pi-Desktop patches in ./patches as .debs, test suite ON.
+# Build Ubuntu's mpv (26.04 "resolute", source 0.41.0-2ubuntu4) with the Pi-Desktop patches in ./patches as .debs.
 #   1. fetch the source package from the Ubuntu archive; verify InRelease (archive key) -> Sources.xz -> every file's SHA256
 #   2. unpack fresh, add ./patches/*.patch to debian/patches/series, install ./mpv.conf as debian/mpv.conf.ubuntu (the
 #      /etc/mpv/mpv.conf conffile), build without the PipeWire audio output, prepend a +pdN changelog entry
-#   3. dpkg-buildpackage -uc -us (source + binaries; the meson test suite runs), copy everything to WORKDIR/out/<version>/
+#   3. dpkg-buildpackage -uc -us (source + binaries; dh_auto_test runs, but Ubuntu's build defines no tests), copy everything to WORKDIR/out/<version>/
 # The source package it produces (.dsc, Ubuntu's .orig.tar.xz, our .debian.tar.xz) is the complete corresponding source.
 # Usage:  build-mpv-deb.sh [WORKDIR] [--prepare-only]      No sudo; build deps: sudo bash install-build-deps.sh WORKDIR (once).
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 W="${1:-$HOME/Development/mpv/ubuntu-pd}"; MODE="${2:-}"
-SRC=mpv; UPV=0.41.0; UBV=0.41.0-2ubuntu4; PDV="$UBV+pd1"
+SRC=mpv; UPV=0.41.0; UBV=0.41.0-2ubuntu4; PDV="$UBV+pd2"
 mkdir -p "$W"; bash "$HERE/fetch-ubuntu-source.sh" "$SRC" "$UBV" "$W/src-pkg"
 ls "$HERE"/patches/*.patch >/dev/null 2>&1 || { echo "E: no patches in $HERE/patches"; exit 1; }
 [ -f "$HERE/mpv.conf" ] || { echo "E: $HERE/mpv.conf (the conffile) missing"; exit 1; }
@@ -49,6 +49,14 @@ PY
 MALI=$(dpkg-query -W -f='${Package}\n' 'libmali-*' 2>/dev/null | head -1 || true)
 if [ -n "$MALI" ]; then printf '\noverride_dh_shlibdeps:\n\tdh_shlibdeps -- -x%s\n' "$MALI" >> debian/rules; echo "shlibdeps: excluding $MALI"; fi
 { printf '%s (%s) resolute; urgency=medium\n\n' "$SRC" "$PDV"
+  printf '  * debian/mpv.conf.ubuntu: a larger demuxer cache for films on network\n'
+  printf '    shares (demuxer-max-bytes=512MiB, demuxer-max-back-bytes=128MiB,\n'
+  printf '    cache-pause-wait=10, top level). mpv already enables its cache for\n'
+  printf '    FUSE/CIFS/NFS paths; the 150 MiB default lasts ~30 s at 40 Mbit/s, too\n'
+  printf '    little to ride out a NAS pause in high-bitrate scenes. Local files are\n'
+  printf '    unaffected (no cache).\n\n'
+  printf ' -- defcom5-rockchip <286489597+defcom5-rockchip@users.noreply.github.com>  %s\n\n' "$(date -R)"
+  printf '%s (%s) resolute; urgency=medium\n\n' "$SRC" "$UBV+pd1"
   printf '  * Pi-Desktop build for Arm'"'"'s Mali GL driver on RK3588 (Orange Pi 5B):\n'
   printf '    - d/p/0001-hwdec-dmabuf_interop_gl-integer-and-refused-plane-imports:\n'
   printf '      sample a luma plane the GL driver imports as an integer texture (R16\n'
@@ -69,7 +77,7 @@ if [ -n "$MALI" ]; then printf '\noverride_dh_shlibdeps:\n\tdh_shlibdeps -- -x%s
   printf '    - Built without the PipeWire audio output (-Dpipewire=disabled; no\n'
   printf '      libpipewire-0.3-dev matches the image'"'"'s PipeWire 1.6.9); audio goes\n'
   printf '      through PulseAudio (pipewire-pulse).\n\n'
-  printf ' -- defcom5-rockchip <286489597+defcom5-rockchip@users.noreply.github.com>  %s\n\n' "$(date -R)"
+  printf ' -- defcom5-rockchip <286489597+defcom5-rockchip@users.noreply.github.com>  Fri, 09 Oct 2026 19:02:35 -0700\n\n'
   cat debian/changelog; } > debian/changelog.new && mv debian/changelog.new debian/changelog
 echo "prepared: $(dpkg-parsechangelog -S Version) with $(wc -l < debian/patches/series) Pi-Desktop patch(es)"
 if ! dpkg-checkbuilddeps 2>"$W/unmet.txt"; then echo "build deps missing: $(cat "$W/unmet.txt")"; echo "run  sudo bash $HERE/install-build-deps.sh $W  first"; [ "$MODE" = --prepare-only ] && exit 0 || exit 2; fi

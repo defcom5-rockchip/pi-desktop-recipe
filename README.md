@@ -1,6 +1,6 @@
-# Plaid Pi 5.0 — build recipe
+# Plaid Pi 5.5 — build recipe
 
-This repository is the complete build recipe for **Plaid Pi 5.0** (formerly Pi-Desktop; 4.5 was built but never
+This repository is the complete build recipe for **Plaid Pi 5.5** (formerly Pi-Desktop; 4.5 was built but never
 published), a desktop Linux image for the **Orange Pi 5B** (Rockchip RK3588S). It is an
 [Armbian build framework](https://github.com/armbian/build) `userpatches/` layer: Ubuntu 26.04 LTS "Resolute" with
 GNOME 50 on the Rockchip vendor 6.1 kernel — Armbian's `rk-6.1-rkr7.2` tree merged with upstream stable Linux 6.1.189
@@ -14,7 +14,7 @@ GNOME 50 on the Rockchip vendor 6.1 kernel — Armbian's `rk-6.1-rkr7.2` tree me
 - hardware video decode (H.264, HEVC, VP9, AV1) in Chromium, mpv and the first-click-installed browsers (Rockchip
   MPP with Plaid Pi's AV1 and VP9 patches, RGA, rockchip-vaapi 3.5.0), and a rebuilt mpv that draws zero-copy
   8- and 10-bit video correctly on the Mali driver,
-- PipeWire 1.6.9 / WirePlumber 0.5.17 with a hi-res audio lane, real-time scheduling and a working 3.5 mm jack,
+- PipeWire 1.6.10 / WirePlumber 0.5.18 with a hi-res audio lane, real-time scheduling and a working 3.5 mm jack,
   and a GStreamer FLAC seek fix for Rhythmbox,
 - a screensaver service in place of screen blanking, with a patched GNOME Settings Power panel,
 - Pro Updates 1.5.0, the update window,
@@ -43,14 +43,14 @@ at build time, or is a pre-built input attached to a GitHub release of this repo
 | `userpatches/bootenv/rk35xx.txt` | Boot environment (`cma=512M`, FRL poll off, `allow_frl=1`). |
 | `userpatches/gcc/` | The gnome-control-center patch and the script that rebuilds the `+pd3.4` packages. |
 | `userpatches/rhythmbox/` | The Rhythmbox 3.5.1 build script and its one patch. |
-| `userpatches/mpv/` | The two mpv patches (`patches/`), the build script `build-mpv-deb.sh` that turns Ubuntu's `mpv 0.41.0-2ubuntu4` source into `+pd1`, and the `mpv.conf` it packages. |
+| `userpatches/mpv/` | The two mpv patches (`patches/`), the build script `build-mpv-deb.sh` that turns Ubuntu's `mpv 0.41.0-2ubuntu4` source into `+pd2`, and the `mpv.conf` it packages. |
 | `userpatches/gst-plugins-good/` | The upstream flacparse patch and the script that rebuilds Ubuntu's `gst-plugins-good1.0 1.28.2-2ubuntu0.4` as `+pd1`. |
 | `userpatches/staged-experiments/` | Notes and patches from the 4K@120 investigation. Not part of the build (the framework ignores this directory); kept as the record behind kernel patches 0007–0011. |
 | `userpatches/INPUTS.sha256` | Checksums of the 36 pre-built inputs, with the path each one belongs at under `userpatches/`. |
 | `fetch-inputs.sh` | Downloads the pre-built inputs into place and verifies them. |
 | `kernel-config/config-6.1.189-vendor-rk35xx` | `/boot/config-6.1.189-vendor-rk35xx` read from the 5.0 release test board (the config the shipped kernel was actually built with). `config-6.1.172-vendor-rk35xx` is the same for the 4.0 release. |
-| `manifest/packages-5.0.tsv` | `dpkg-query -W` of the release test board: every package and version in the image (`packages-4.0.tsv` is the 4.0 list). |
-| `manifest/apt-sources-5.0.txt` | `apt-cache policy` of the release test board: the archives and pins the image updates from (`apt-sources-4.0.txt` is the 4.0 list). |
+| `manifest/packages-5.5.tsv` | `dpkg-query -W` of the release test board: every package and version in the image (`packages-4.0.tsv` is the 4.0 list). |
+| `manifest/apt-sources-5.5.txt` | `apt-cache policy` of the release test board: the archives and pins the image updates from (`apt-sources-4.0.txt` is the 4.0 list). |
 | `SOURCES.md` | Where every rebuilt or binary component comes from and under which licence. |
 | `ARTWORK.md` | The Plaid Pi artwork and its licence (CC BY-SA 4.0). |
 | `LICENSE`, `LICENSES/` | GPL-3.0 (the recipe) and CC BY-SA 4.0 (the artwork) texts. |
@@ -112,8 +112,8 @@ internals (`armbian_kernel_config` option arrays, `apt_find_upstream_package_ver
    ```
 
    (`COMPRESS_OUTPUTIMAGE=sha,img` leaves a raw image plus checksum; the published `.img.zst` is that file
-   compressed with `zstd -19`.) The published 5.0 image is `Plaid-Pi-5.0-orangepi5b.img.zst`, 1,486,451,853 bytes,
-   SHA-256 `d592a48fadaac293704b1a74fad9e1a3f8c05389eab21d3ee05e2578daeaf6be`. `customize-image.sh` also writes
+   compressed with `zstd -19`.) The published 5.5 image is `Plaid-Pi-5.5-orangepi5b.img.zst`, 1,488,903,509 bytes,
+   SHA-256 `aca1459727770e54096e5f6684283d4728e8b8993ad9b72d93f6b2903a690a5d`. `customize-image.sh` also writes
    `/etc/pi-desktop-manifest.txt` into the image with the key package versions and holds, and prints it in the
    build log.
 
@@ -128,8 +128,8 @@ the 5B (the release image is the 5B build).
 `userpatches/overlay/pidesktop/debs/`, the patched `libmali-hook.so.1.9.0` under `overlay/pidesktop/gpu/`,
 `libpidesktop-ffmali.so.1` under `overlay/pidesktop/firefox/ffmali/`, and the screensaver video under
 `overlay/pidesktop/usr/share/pi-desktop/screensaver/`; about 93 MB together. They are published as the GitHub
-release **`inputs-5.0`** of this repository, and `fetch-inputs.sh` fetches them into place (GitHub stores release
-assets with `~` in the name replaced by `.`, so the script requests `pipewire_1.6.9-2.pd31_arm64.deb` and saves it
+release **`inputs-5.5`** of this repository, and `fetch-inputs.sh` fetches them into place (GitHub stores release
+assets with `~` in the name replaced by `.`, so the script requests `pipewire_1.6.10-1.pd55_arm64.deb` and saves it
 under its real name). `userpatches/INPUTS.sha256` is in `sha256sum` format, so
 `cd userpatches && sha256sum -c INPUTS.sha256` also verifies a populated tree.
 
@@ -184,7 +184,7 @@ package is ARM's proprietary driver as packaged by Rockchip and is not built fro
 
 ## Notes for whoever rebuilds this
 
-- `PIDESKTOP_VERSION="5.0"` in `config-pidesktop3.conf` is the version string the image shows
+- `PIDESKTOP_VERSION="5.5"` in `config-pidesktop3.conf` is the version string the image shows
   (`/etc/os-release`, MOTD, `/etc/issue`, fastfetch). The board config is still called `pidesktop3` — that is
   the `./compile.sh` argument, not the version — and the internal names (`pidesktop-*` scripts, `pi-desktop`
   paths, the `Pi-Desktop_…` output image name) stay as they were; only the user-visible name changed to Plaid Pi.
@@ -201,7 +201,7 @@ package is ARM's proprietary driver as packaged by Rockchip and is not built fro
   VA-API prefs and a neutral policy (telemetry, studies and Pocket off); Chrome is fetched from Google's signed
   repository. VSCodium replaces VS Code. Ubuntu's wallpapers and docs are removed and the OS name is Plaid Pi
   (Canonical's IP policy for modified images).
-- mpv is held (`apt-mark hold`): an Ubuntu update would replace the `+pd1` build and draw 10-bit video dark on
+- mpv is held (`apt-mark hold`): an Ubuntu update would replace the `+pd2` build and draw 10-bit video dark on
   the Mali driver. gst-plugins-good is not held; a newer Ubuntu security update replaces it and the first-boot
   check reports which build is present.
 

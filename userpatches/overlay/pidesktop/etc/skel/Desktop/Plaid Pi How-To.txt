@@ -1,4 +1,4 @@
-Plaid Pi 5.0 - Quick How-To
+Plaid Pi 5.5 - Quick How-To
 ===========================
 
 
@@ -27,13 +27,15 @@ Plaid Pi image stays small:
      Firefox about 90 MB, Thunderbird about 75 MB, GIMP and Inkscape about 30 MB.
   3. The app opens by itself, and from then on it starts like any other app.
 
-Firefox is set up for this board as it installs: it runs on the graphics
-chip and, with a small library of Plaid Pi's, plays 8-bit and 10-bit video
-on the board's video engine (H.264, VP9 and AV1 tested at 1080p). Chromium
-and Chrome do too, and so does mpv, the video player, for files on your disk. LibreOffice comes as Writer, Calc, Impress, Draw and Math; the database
-module isn't included because it needs Java ("sudo apt install
-libreoffice-base" adds it). VSCodium is the community build of VS Code with
-Microsoft's telemetry removed. Everything updates through Pro Updates (and the daily security updates install by themselves).
+Firefox is set up for this board as it installs: it runs on the graphics chip
+and, with a small library of Plaid Pi's, plays 8-bit and 10-bit video on the
+board's video engine (H.264, VP9 and AV1 tested at 1080p). Chromium and Chrome
+do too, and so does mpv, the video player, for files on your disk. LibreOffice
+comes as Writer, Calc, Impress, Draw and Math; the database module isn't
+included because it needs Java ("sudo apt install libreoffice-base" adds it).
+VSCodium is the community build of VS Code with Microsoft's telemetry removed.
+Everything updates through Pro Updates (and the daily security updates install
+by themselves).
 
 
 3. Screen scaling (how big everything looks)
@@ -53,5 +55,28 @@ graphics chip work much harder, and video can stutter. For the smoothest video:
 
 The refresh rate is in Settings > Displays > Refresh Rate.
 
+
+4. Films and music on a NAS (network drive)
+-------------------------------------------
+Videos opened straight from a network location in Files (smb://...) are read
+a little at a time, so a film can skip for a moment when the NAS pauses.
+Add the share as a network drive instead: the system then reads well ahead
+for every program.
+
+  1. In Files, click "Network", open the NAS and right-click the share (or an
+     empty spot inside it) > "Add as Network Drive..."
+     If the NAS isn't listed, type smb:// and its name in the "Server address"
+     box at the bottom of the Network page and click "Connect" first.
+     Or open "Network Drive" from the Utilities folder in the app grid and
+     type the server and the share.
+  2. Type your user name and password for the NAS (leave both empty if the
+     share is open to guests) and choose "Add Drive".
+  3. Type your own password when asked.
+
+The drive then has its own entry in the Files sidebar; open films from there,
+not from the Network page. It connects by itself when you open it and is also
+under /mnt/ for other programs. mpv, the video player, keeps the most ahead.
+To remove a drive, open "Network Drive", click the bin next to it, then
+"Remove".
 
 More help: https://github.com/defcom5-rockchip/pi-desktop

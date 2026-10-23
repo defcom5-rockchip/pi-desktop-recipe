@@ -5,8 +5,9 @@
 # offer to download it from Google first (Pi-Desktop may not ship Chrome itself). Chrome reads no flags file,
 # so the flags live here, not in Chrome's own launcher, and Chrome updates can't strip them.
 CHROME=/usr/bin/google-chrome-stable
+# JointMediaOptimizer:…/60 (5.5): 60 s of a local or network-drive video ahead instead of 10, capped by Chrome at 50 MiB.
 FLAGS=(--ozone-platform=wayland --render-node-override=/dev/dri/renderD128
-	--enable-features=AcceleratedVideoDecoder,AcceleratedVideoDecodeLinuxGL,AcceleratedVideoDecodeLinuxZeroCopyGL,PlatformHEVCDecoderSupport)
+	--enable-features=AcceleratedVideoDecoder,AcceleratedVideoDecodeLinuxGL,AcceleratedVideoDecodeLinuxZeroCopyGL,PlatformHEVCDecoderSupport,JointMediaOptimizer:SrcMediaMultiBufferPreloadSeconds/60)
 TITLE="Google Chrome"
 
 if [[ ! -x $CHROME ]]; then

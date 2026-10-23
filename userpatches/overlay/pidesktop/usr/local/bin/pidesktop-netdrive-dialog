@@ -1,0 +1,408 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 defcom5-rockchip (Plaid Pi)
+"""Network Drive: add a NAS share as a network drive (a kernel CIFS mount under /mnt).
+
+Films opened from a share in Files (smb://…) are read without read-ahead, so a NAS that pauses for a few seconds makes
+them skip, with the sound cutting out. A network drive is mounted by the kernel, which reads ahead, so Firefox, Chrome,
+mpv and Files all play from it smoothly. The drive mounts when something opens it and unmounts after 15 idle minutes.
+
+This window only collects the details; the privileged part is /usr/local/sbin/pidesktop-netdrive, run through pkexec,
+which receives the password on its standard input (never on a command line) and keeps it in a root-only file.
+
+    pidesktop-netdrive-dialog [--server S] [--share S] [--user U] [--name N] [smb://server/share]
+"""
+import argparse, os, re, subprocess, sys, threading, time, unicodedata
+from urllib.parse import unquote
+
+HELPER = "/usr/local/sbin/pidesktop-netdrive"
+NAME_RE = r"[a-z0-9][a-z0-9-]{0,31}"
+SERVER_RE = r"[A-Za-z0-9._-]+"          # the helper's own rule: a name or an IPv4 address
+
+
+def log_path():
+    try:
+        from gi.repository import GLib
+        base = GLib.get_user_cache_dir()
+    except Exception:
+        base = os.path.expanduser("~/.cache")
+    return os.path.join(base, "pidesktop-netdrive-dialog.log")
+
+
+def dlog(msg):
+    """A short log of what the window did (never the password)."""
+    try:
+        p = log_path()
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        if os.path.exists(p) and os.path.getsize(p) > 256 * 1024:
+            os.replace(p, p + ".old")
+        fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        with os.fdopen(fd, "a") as f:
+            f.write(time.strftime("%F %T ") + msg + "\n")
+    except OSError:
+        pass
+
+
+def list_drives():
+    try:
+        out = subprocess.run([HELPER, "list"], capture_output=True, text=True, errors="replace",
+                             stdin=subprocess.DEVNULL, timeout=10).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    rows = []
+    for line in out.splitlines():
+        parts = line.split("\t")
+        if len(parts) == 4:
+            rows.append(dict(zip(("name", "source", "target", "state"), parts)))
+    return rows
+
+
+def suggest_name(share, taken=()):
+    ascii_share = unicodedata.normalize("NFKD", share).encode("ascii", "ignore").decode()
+    base = re.sub(r"[^a-z0-9]+", "-", ascii_share.lower()).strip("-")[:28].strip("-") or "drive"
+    name, n = base, 2
+    while name in taken:
+        name, n = f"{base}-{n}", n + 1
+    return name
+
+
+GVFS_RE = r"smb-share:([^/]+)"           # a GVfs mount folder: .../gvfs/smb-share:server=nas,share=films,user=bob
+
+
+def looks_like_location(text):
+    """A whole share location (as pasted or dropped), not a server name being typed."""
+    t = text.strip().lower()
+    return t.startswith(("smb:", "//", "\\\\")) or "smb-share:" in t
+
+
+def redact(text):
+    """For the log: never write what could be a password (user:password@server keeps only @server)."""
+    return ("…@" + text.rsplit("@", 1)[1]) if text and "@" in text else text
+
+
+def parse_server(text):
+    """'nas.local', 'smb://nas/share/deeper/path', 'SMB://user@nas/Share', '//nas/share', '\\\\nas\\share' or a GVfs
+    folder ('/run/user/1000/gvfs/smb-share:server=nas,share=films/...') -> (server, share-or-None, user-or-None)."""
+    g = re.search(GVFS_RE, unquote(text.strip()))
+    if g:
+        kv = dict(p.split("=", 1) for p in g.group(1).split(",") if "=" in p)
+        return kv.get("server", ""), kv.get("share") or None, kv.get("user") or None
+    t = text.strip().replace("\\", "/")
+    m = re.match(r"^(?:smb:)?//(?:([^@/]*)@)?([^/]+)(?:/([^/]+))?(?:/.*)?$", t, re.I)
+    if not m:
+        return t, None, None
+    user = unquote(m.group(1)).split(";")[-1] if m.group(1) else None
+    user = user.split(":")[0] if user else None          # never keep a password pasted as user:pass@
+    return unquote(m.group(2)), (unquote(m.group(3)) if m.group(3) else None), (user or None)
+
+
+def parse_prefill(argv):
+    """--server/--share/--user/--name (or one smb:// URI) from a command line. Never exits: a bad command line
+    must not close a window that is already open."""
+    ap = argparse.ArgumentParser(add_help=False, allow_abbrev=False, exit_on_error=False)
+    for o in ("--server", "--share", "--user", "--name"):
+        ap.add_argument(o)
+    try:
+        ns, rest = ap.parse_known_args(argv)
+    except (argparse.ArgumentError, SystemExit):
+        return argparse.Namespace(server=None, share=None, user=None, name=None)
+    for word in rest:                      # Files passes an smb:// location as a plain argument
+        if word.lower().startswith(("smb://", "//", "\\\\")):
+            server, share, user = parse_server(word)
+            ns.server = ns.server or server
+            ns.share = ns.share or share
+            ns.user = ns.user or user
+    return ns
+
+
+def run_helper(args, stdin_text=None):
+    """pkexec the helper; returns (ok, message). The helper bounds its own waits, so no timeout here: once pkexec has
+    started it as root it can't be killed from this process anyway."""
+    dlog("run: pkexec helper " + " ".join(args))
+    r = subprocess.run(["pkexec", HELPER] + args, input=stdin_text, capture_output=True, text=True, errors="replace",
+                       stdin=None if stdin_text is not None else subprocess.DEVNULL)
+    err = r.stderr.strip()
+    dlog(f"rc={r.returncode} out={r.stdout.strip()!r} err={err!r}")
+    if r.returncode == 126:
+        return False, "Cancelled. Nothing was changed."
+    if r.returncode == 127:
+        if "authentication agent" in err:
+            return False, ("No password prompt could be shown, so nothing was changed. "
+                           "Open Network Drive from the desktop, not from ssh or a script.")
+        if "Not authorized" in err:
+            return False, ("Your own password wasn't accepted, or this account isn't an administrator. "
+                           "Nothing was changed.")
+        return False, "Couldn't get permission: " + (err or "pkexec failed")
+    msg = (r.stdout.strip() or err).replace("E: ", "")
+    return r.returncode == 0, msg
+
+
+def main():
+    import gi
+    gi.require_version("Gtk", "4.0"); gi.require_version("Adw", "1")
+    from gi.repository import Adw, Gio, GLib, Gtk
+
+    class Win(Adw.ApplicationWindow):
+        def __init__(self, app):
+            super().__init__(application=app, title="Network Drive", default_width=560, default_height=680)
+            self.busy = False
+            self.names = set()
+            self.last_toast = None
+            self._auto = False
+            self.name_edited = False
+            tv = Adw.ToolbarView(); self.set_content(tv)
+            tv.add_top_bar(Adw.HeaderBar())
+            self.toast = Adw.ToastOverlay(); tv.set_content(self.toast)
+            page = Adw.PreferencesPage(); self.toast.set_child(page)
+
+            self.drives = Adw.PreferencesGroup(title="Network drives",
+                description="Drives connect when something opens them and disconnect after 15 idle minutes.")
+            page.add(self.drives)
+            self.drive_rows = []
+
+            self.addgroup = Adw.PreferencesGroup(title="Add a drive",
+                description="For films and music on a NAS: programs read ahead from a network drive, so a short "
+                            "pause on the NAS doesn't interrupt playback.")
+            page.add(self.addgroup)
+            self.server = Adw.EntryRow(title="Server, e.g. nas.local (or drop a share here)")
+            self.share = Adw.EntryRow(title="Share")
+            self.user = Adw.EntryRow(title="User name (leave empty for guest access)")
+            self.password = Adw.PasswordEntryRow(title="Password")
+            self.name = Adw.EntryRow(title="Drive name (a-z, 0-9, -)")
+            self.readonly = Adw.SwitchRow(title="Read-only", subtitle="Recommended for a media library", active=True)
+            self.show_files = Adw.SwitchRow(title="Show in Files", active=True)
+            for w in (self.server, self.share, self.user, self.password, self.name, self.readonly, self.show_files):
+                self.addgroup.add(w)
+            # A location (smb://…, //…, \\\\…, a GVfs folder) pasted or dropped into the Server or the Share box fills
+            # server, share and user at once. Typing is left alone and split only when the box is left, Enter is
+            # pressed or Add Drive is clicked (splitting per keystroke moved text into Share while the user typed).
+            self._prev, self._setting = {}, False
+            for row in (self.server, self.share):
+                self._prev[row] = ""
+                row.connect("changed", self.on_location_row_changed)
+                row.connect("entry-activated", lambda *_: self.split_location())
+                leave = Gtk.EventControllerFocus(); leave.connect("leave", lambda *_: self.split_location())
+                row.add_controller(leave)
+            self.share.connect("changed", self.on_share_changed)
+            self.name.connect("changed", self.on_name_changed)
+
+            self.add_btn = Gtk.Button(label="Add Drive", halign=Gtk.Align.END, margin_top=12)
+            self.add_btn.add_css_class("suggested-action")
+            self.add_btn.connect("clicked", self.on_add)
+            self.addgroup.add(self.add_btn)
+            self.refresh()
+
+        # ---- small helpers
+        def say(self, text, timeout=6):
+            dlog("toast: " + text)
+            if self.last_toast is not None:
+                self.last_toast.dismiss()
+            self.last_toast = Adw.Toast(title=text, use_markup=False, timeout=timeout)
+            self.last_toast.set_custom_title(Gtk.Label(label=text, wrap=True, xalign=0))   # long messages wrap, not "…"
+            self.toast.add_toast(self.last_toast)
+
+        def set_name_auto(self, text):
+            self._auto = True
+            self.name.set_text(text)
+            self._auto = False
+
+        def refresh(self):
+            for r in self.drive_rows:
+                self.drives.remove(r)
+            self.drive_rows = []
+            drives = list_drives()
+            self.names = {d["name"] for d in drives}
+            if not drives:
+                r = Adw.ActionRow(title="No network drives yet"); self.drives.add(r); self.drive_rows.append(r)
+            for d in drives:
+                state = "connected" if d["state"] == "mounted" else "connects when opened"
+                r = Adw.ActionRow(title=d["name"], subtitle=f"{d['source']} → {d['target']} · {state}",
+                                  use_markup=False)
+                ob = Gtk.Button(icon_name="folder-open-symbolic", valign=Gtk.Align.CENTER, tooltip_text="Open in Files")
+                ob.add_css_class("flat"); ob.connect("clicked", self.on_open, d["target"])
+                rb = Gtk.Button(icon_name="user-trash-symbolic", valign=Gtk.Align.CENTER, tooltip_text="Remove this drive")
+                rb.add_css_class("flat"); rb.connect("clicked", self.on_remove, d["name"])
+                r.add_suffix(ob); r.add_suffix(rb)
+                self.drives.add(r); self.drive_rows.append(r)
+            if not self.name_edited and self.share.get_text().strip():
+                self.set_name_auto(suggest_name(self.share.get_text(), self.names))
+
+        # ---- field logic
+        def prefill(self, pre):
+            if not any(vars(pre).values()):
+                return
+            dlog(f"prefill: server={redact(pre.server)!r} share={pre.share!r} user={pre.user!r} name={pre.name!r}")
+            if pre.server and pre.server != self.server.get_text().strip():
+                self.password.set_text("")            # never send one server's password to another
+            if pre.share and not pre.name:
+                self.name_edited = False
+            for row, val in ((self.server, pre.server), (self.share, pre.share), (self.user, pre.user)):
+                if val:
+                    row.set_text(val)
+            if pre.name:
+                self.name.set_text(pre.name); self.name_edited = True
+            if pre.server or pre.share:                # the next empty field: the user name, else the password
+                (self.password if self.user.get_text().strip() else self.user).grab_focus()
+
+        def on_location_row_changed(self, row):
+            new, old = row.get_text(), self._prev.get(row, "")
+            self._prev[row] = new
+            if self._setting or len(new) - len(old) < 2:
+                return                                  # a keystroke or a deletion: leave the typing alone
+            i = 0                                       # the inserted piece: new text minus the common start and end
+            while i < min(len(old), len(new)) and old[i] == new[i]:
+                i += 1
+            j = 0
+            while j < min(len(old), len(new)) - i and old[-1 - j] == new[-1 - j]:
+                j += 1
+            piece = new[i:len(new) - j]
+            if looks_like_location(piece):              # a pasted or dropped location
+                GLib.idle_add(self.take_location, piece, True, row, old if row is self.server else None)
+
+        def split_location(self):
+            for row in (self.server, self.share):
+                text = row.get_text().strip()
+                if looks_like_location(text):
+                    self.take_location(text, False, row)
+                    return
+
+        def take_location(self, text, move_focus, src=None, prev_server=None):
+            """Put the location's server and share into their boxes (replacing what was there, including a location
+            sitting in the Share box) and fill in the user name if that box is empty. A different server clears the
+            password and the user name: one server's login is never sent to another."""
+            line = next((l.strip() for l in text.splitlines() if l.strip()), "")   # several dropped items: the first
+            if not looks_like_location(line):
+                return False
+            server, share, user = parse_server(line)
+            if not re.fullmatch(SERVER_RE, server or ""):
+                return False                            # not a clean location: leave the boxes as they are
+            before = self.server.get_text() if prev_server is None else prev_server
+            old_server = parse_server(before)[0].strip().lower() if before.strip() else ""
+            if old_server and old_server != server.lower():
+                self.password.set_text("")
+                self.user.set_text("")
+            self._setting = True
+            self.server.set_text(server)
+            if share or src is self.share:                # a location dropped into Share replaces what was there
+                self.share.set_text(share or "")
+            self._setting = False
+            self._prev[self.server], self._prev[self.share] = self.server.get_text(), self.share.get_text()
+            if user and not self.user.get_text().strip():
+                self.user.set_text(user)
+            dlog(f"location: server={server!r} share={share!r} user={user!r}")
+            if move_focus:
+                (self.password if self.user.get_text().strip() else self.user).grab_focus()
+            return False
+
+        def on_share_changed(self, *_):
+            if not self.name_edited:
+                self.set_name_auto(suggest_name(self.share.get_text(), self.names))
+
+        def on_name_changed(self, *_):
+            if not self._auto:
+                self.name_edited = bool(self.name.get_text().strip())
+
+        # ---- actions
+        def on_open(self, _btn, target):
+            try:
+                Gio.AppInfo.launch_default_for_uri(Gio.File.new_for_path(target).get_uri(), None)
+            except GLib.Error as e:
+                self.say(f"Couldn't open {target}: {e.message}")
+
+        def on_remove(self, _btn, name):
+            if self.busy:
+                return
+            d = Adw.AlertDialog(heading=f"Remove {name}?",
+                                body="The drive disappears from Files and its saved login is deleted. Nothing on the NAS changes.")
+            d.add_response("cancel", "Cancel"); d.add_response("remove", "Remove")
+            d.set_response_appearance("remove", Adw.ResponseAppearance.DESTRUCTIVE)
+            d.set_default_response("cancel"); d.set_close_response("cancel")
+            d.connect("response", lambda _d, resp: resp == "remove" and self.work(["remove", name], None, f"Removed {name}"))
+            d.present(self)
+
+        def on_add(self, *_):
+            if self.busy:
+                return
+            self.split_location()
+            server, share = parse_server(self.server.get_text())[0], self.share.get_text().strip()
+            name, user = self.name.get_text().strip(), self.user.get_text().strip()
+            password = self.password.get_text()
+            dlog(f"add clicked: server={redact(server)!r} share={redact(share)!r} name={name!r} user={user!r} "
+                 f"password_set={bool(password)} ro={self.readonly.get_active()}")
+            if not server or not share:
+                self.say("Enter the server and the share."); return
+            if not re.fullmatch(SERVER_RE, server):
+                self.say("Server: a name like nas.local or an IPv4 address (no user@, :port or IPv6)."); return
+            if not re.fullmatch(NAME_RE, name):
+                self.say("Drive name: up to 32 characters, a-z, 0-9 and '-'."); return
+            if name in self.names:
+                self.say(f"A drive called {name} already exists. Choose another name, or remove that drive first."); return
+            if "\n" in password or "\r" in password:
+                self.say("The password contains a line break; type it again."); return
+            if password and not user:                 # without a user name the helper would try a guest login
+                self.say("Type the user name that goes with the password, or clear the password for a guest share.")
+                self.user.grab_focus(); return
+            args = ["add", name, f"//{server}/{share}"]
+            if user:
+                args += ["--user", user]
+            if not self.readonly.get_active():
+                args.append("--rw")
+            if not self.show_files.get_active():
+                args.append("--hide")
+            self.work(args, password + "\n", f"Added {name}. Find it in Files or at /mnt/{name}.")
+
+        def work(self, args, stdin_text, ok_text):
+            self.busy = True
+            self.add_btn.set_sensitive(False); self.drives.set_sensitive(False)
+            app = self.get_application(); app.hold()
+            self.say("Connecting…" if args[0] == "add" else "Working…", timeout=2)
+
+            def job():
+                ok, msg = False, "Something went wrong"
+                try:
+                    ok, msg = run_helper(args, stdin_text)
+                except Exception as e:                     # never leave the window stuck
+                    msg = f"Something went wrong: {e}"
+                finally:
+                    GLib.idle_add(done, ok, msg)
+
+            def done(ok, msg):
+                self.busy = False
+                self.add_btn.set_sensitive(True); self.drives.set_sensitive(True)
+                app.release()
+                if ok and args[0] == "add":
+                    self.password.set_text("")
+                    self.name_edited = False
+                if ok or (msg or "").startswith("Cancelled"):  # success, or the user cancelled the password prompt
+                    self.say((ok_text if ok else None) or msg or "Done", timeout=8)
+                else:                                   # a failure must be read in full: a dialog, not a toast
+                    if self.last_toast is not None:
+                        self.last_toast.dismiss()
+                    dlog("failed: " + (msg or "Failed"))
+                    d = Adw.AlertDialog(heading="Couldn't add the drive" if args[0] == "add" else "Couldn't remove the drive",
+                                        body=(msg[:1].upper() + msg[1:]) if msg else "Something went wrong.")
+                    d.add_response("ok", "OK"); d.set_default_response("ok"); d.set_close_response("ok")
+                    d.present(self)
+                self.refresh()
+                return False
+
+            threading.Thread(target=job, daemon=True).start()
+
+    # One window per session. A second launch (from the Files menu with an smb:// location, or the app grid) hands its
+    # command line to the running window, which takes the new values instead of ignoring them.
+    app = Adw.Application(application_id="org.pidesktop.NetworkDrive",
+                          flags=Gio.ApplicationFlags.HANDLES_COMMAND_LINE)
+
+    def on_command_line(a, cmdline):
+        win = a.get_active_window() or Win(a)
+        win.prefill(parse_prefill(cmdline.get_arguments()[1:]))
+        win.present()
+        return 0
+
+    app.connect("command-line", on_command_line)
+    app.connect("activate", lambda a: (a.get_active_window() or Win(a)).present())
+    app.run(sys.argv)
+
+
+if __name__ == "__main__":
+    main()

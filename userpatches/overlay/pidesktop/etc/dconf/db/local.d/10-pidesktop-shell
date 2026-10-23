@@ -58,7 +58,7 @@ picture-uri='file:///usr/share/backgrounds/pi-desktop/penguin-drop-plaid-v2-3840
 # App grid folders. GNOME Shell writes its own System and Utilities folders at the first login only when the system
 # gives none (appDisplay.js _ensureDefaultFolders), so these defaults replace them: GNOME 50's own lists
 # (misc/config.js SYSTEM_FOLDER_APPS / UTILITIES_FOLDER_APPS; apps that are not installed are simply not shown),
-# plus Killswitch in Utilities. Killswitch is not on the dock: GNOME hides dock favourites from the grid and its folders.
+# plus Killswitch and Network Drive in Utilities. Killswitch is not on the dock: GNOME hides dock favourites from the grid and its folders.
 [org/gnome/desktop/app-folders]
 folder-children=['System', 'Utilities']
 
@@ -70,4 +70,4 @@ apps=['nm-connection-editor.desktop', 'org.gnome.DejaDup.desktop', 'org.gnome.ba
 [org/gnome/desktop/app-folders/folders/Utilities]
 name='X-GNOME-Shell-Utilities.directory'
 translate=true
-apps=['org.gnome.Decibels.desktop', 'org.gnome.Connections.desktop', 'org.gnome.Papers.desktop', 'org.gnome.FileRoller.desktop', 'org.gnome.font-viewer.desktop', 'org.gnome.Loupe.desktop', 'org.gnome.seahorse.Application.desktop', 'org.gnome.Seahorse.desktop', 'org.pidesktop.Killswitch.desktop']
+apps=['org.gnome.Decibels.desktop', 'org.gnome.Connections.desktop', 'org.gnome.Papers.desktop', 'org.gnome.FileRoller.desktop', 'org.gnome.font-viewer.desktop', 'org.gnome.Loupe.desktop', 'org.gnome.seahorse.Application.desktop', 'org.gnome.Seahorse.desktop', 'org.pidesktop.Killswitch.desktop', 'org.pidesktop.NetworkDrive.desktop']

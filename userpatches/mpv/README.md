@@ -1,7 +1,7 @@
 # mpv for Pi-Desktop
 
 Pi-Desktop 4.5 ships Ubuntu 26.04's mpv source package `0.41.0-2ubuntu4` rebuilt with two patches as
-`0.41.0-2ubuntu4+pd1` (binary packages `mpv`, `libmpv2`; `libmpv-dev` is built too). It links Ubuntu's libplacebo
+`0.41.0-2ubuntu4+pd2` (binary packages `mpv`, `libmpv2`; `libmpv-dev` is built too). It links Ubuntu's libplacebo
 (`libplacebo360`) like Ubuntu's own build.
 
 **Why:** Arm's proprietary Mali GL driver on the Orange Pi 5B imports the brightness plane of a 10-bit frame
@@ -40,10 +40,10 @@ patched source package to `WORKDIR/out/<version>/`.
 **Licences:** mpv is GPL-2.0-or-later in its default configuration (Ubuntu's copyright file has the details); as
 Ubuntu builds it, linked with libcdio (GPL-3.0-or-later), the binaries are conveyed under GPL-3.0-or-later. The patches
 change LGPL-2.1-or-later files and are LGPL-2.1-or-later. These scripts are GPL-3.0-or-later
-like the rest of the recipe. **Complete corresponding source:** the patched source package (`mpv_0.41.0-2ubuntu4+pd1.dsc`,
-Ubuntu's `mpv_0.41.0.orig.tar.gz`, `mpv_0.41.0-2ubuntu4+pd1.debian.tar.xz`), published with the Pi-Desktop release
+like the rest of the recipe. **Complete corresponding source:** the patched source package (`mpv_0.41.0-2ubuntu4+pd2.dsc`,
+Ubuntu's `mpv_0.41.0.orig.tar.gz`, `mpv_0.41.0-2ubuntu4+pd2.debian.tar.xz`), published with the Pi-Desktop release
 that ships these packages.
 
-**Updates:** the image holds `mpv`, because any Ubuntu update of mpv (`0.41.0-2ubuntu4.x` sorts above `+pd1`) would
+**Updates:** the image holds `mpv`, because any Ubuntu update of mpv (`0.41.0-2ubuntu4.x` sorts above `+pd2`) would
 replace it and draw 10-bit near-black with Pi-Desktop's configuration. Ubuntu's mpv fixes therefore arrive with a
 Pi-Desktop rebuild: bump `UBV`/`PDV` in `build-mpv-deb.sh`, check that the patches still apply, rebuild, retest.
