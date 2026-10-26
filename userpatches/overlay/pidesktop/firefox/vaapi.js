@@ -15,3 +15,14 @@ pref("media.ffmpeg.vaapi.force-surface-zero-copy", 1);
 pref("gfx.webrender.compositor", false);
 // 4K60 AV1 on the VPU without drops (2026-10-15, Firefox 157/158 + rockchip-vaapi 3.5.0): a deeper hardware frame queue
 pref("media.video-queue.hw-accel-size", 10);
+// DRM (6.0): Widevine from Google Chrome's install, named by the launcher through MOZ_GMP_PATH when Chrome is present.
+// Mozilla ships no Widevine for this platform, so Firefox hides the switch by default; make it visible and on, and don't
+// let the plugin updater look for a copy that doesn't exist.
+pref("media.eme.enabled", true);
+pref("media.gmp-widevinecdm.visible", true);
+pref("media.gmp-widevinecdm.enabled", true);
+pref("media.gmp-widevinecdm.autoupdate", false);
+// Prime Video froze its tab (2026-10-24, Firefox 158): a deadlock in the content process when a trailer's decoder thread
+// starts the plugin service through the plugin-decoder check while the page's Widevine check waits for it. Keep plugins
+// out of ordinary video decoding (default true here); OpenH264 stays available for WebRTC calls.
+pref("media.gmp.decoder.enabled", false);

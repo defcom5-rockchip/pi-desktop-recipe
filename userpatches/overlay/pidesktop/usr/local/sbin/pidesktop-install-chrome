@@ -15,8 +15,20 @@ LOG=/var/log/pidesktop-install-chrome.log
 [[ $EUID -eq 0 ]] || { echo "must run as root" >&2; exit 1; }
 exec 9>/run/lock/pidesktop-install-chrome.lock
 flock -n 9 || { echo "another Chrome install is already running" >&2; exit 3; }
+APT_LOCK=(-o DPkg::Lock::Timeout=600)
 exec > >(tee -a "$LOG") 2>&1
 echo "== $(date '+%F %T') installing Google Chrome"
+# First boot: apt-daily refreshes the package lists and the daily security updates install right after login, holding
+# apt's locks for a few minutes. DPkg::Lock::Timeout waits for dpkg's lock, but apt-get update tries its lists lock only
+# once, so wait for all of them here (up to 10 minutes) and say so; the progress dialog shows this line.
+wait_apt() {
+	local n=0
+	while fuser /var/lib/apt/lists/lock /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock >/dev/null 2>&1; do
+		if [[ $n -eq 0 ]]; then echo "Waiting for system updates to finish..."; fi
+		n=$((n + 1)); if [[ $n -ge 300 ]]; then break; fi
+		sleep 2
+	done
+}
 
 if [[ ! -x /usr/bin/google-chrome-stable ]]; then
 	tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
@@ -42,10 +54,11 @@ Architectures: arm64
 Signed-By: $KEYRING
 EOF
 	chmod 644 "$SOURCES"
+	wait_apt
 	echo "Updating package lists"
-	apt-get update -q
+	apt-get "${APT_LOCK[@]}" update -q
 	echo "Downloading and installing Google Chrome"
-	DEBIAN_FRONTEND=noninteractive apt-get install -y -q google-chrome-stable
+	DEBIAN_FRONTEND=noninteractive apt-get "${APT_LOCK[@]}" install -y -q google-chrome-stable
 fi
 
 [[ -x /usr/bin/google-chrome-stable ]] || { echo "E: google-chrome-stable is not installed"; exit 1; }

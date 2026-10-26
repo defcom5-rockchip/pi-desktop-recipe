@@ -1,0 +1,21 @@
+# Plaid Pi (6.0): DRM video in Chromium through the Widevine module that Google Chrome installs.
+# Chromium is built with Widevine support but ships without the module; Chrome's arm64 package carries it in
+# /opt/google/chrome/WidevineCdm. Chromium looks for a "hint" file in its profile naming a folder that holds the module
+# (the same file Chrome writes in its own profile), so this points Chromium at Chrome's copy. Nothing is copied or
+# redistributed: the module stays Google's install, under Google's licence, and the hint is the user's own setting.
+# Runs at every Chromium start (this folder is sourced by /usr/bin/chromium); writes only when the file is missing
+# or the module's version changed; never fails the launch.
+_pw_dir=/opt/google/chrome/WidevineCdm
+if [ -r "$_pw_dir/manifest.json" ] && [ -r "$_pw_dir/_platform_specific/linux_arm64/libwidevinecdm.so" ]; then
+	_pw_ver=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([0-9.]*\)".*/\1/p' "$_pw_dir/manifest.json" | head -1)
+	_pw_prof="${XDG_CONFIG_HOME:-$HOME/.config}/chromium/WidevineCdm"
+	_pw_hint="$_pw_prof/latest-component-updated-widevine-cdm"
+	_pw_want="{\"LastBundledVersion\":\"$_pw_ver\",\"Path\":\"$_pw_dir\"}"
+	if [ -n "$_pw_ver" ] && [ "$(cat "$_pw_hint" 2>/dev/null)" != "$_pw_want" ]; then
+		_pw_tmp=
+		mkdir -p "$_pw_prof" 2>/dev/null && _pw_tmp=$(mktemp "$_pw_prof/.hint.XXXXXX" 2>/dev/null) \
+			&& printf '%s' "$_pw_want" > "$_pw_tmp" && mv -f "$_pw_tmp" "$_pw_hint" 2>/dev/null || { [ -n "$_pw_tmp" ] && rm -f "$_pw_tmp" 2>/dev/null; }
+	fi
+	unset _pw_tmp _pw_want _pw_hint _pw_prof _pw_ver
+fi
+unset _pw_dir

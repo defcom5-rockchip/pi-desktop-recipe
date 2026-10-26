@@ -23,8 +23,14 @@ if [[ ! -x $CHROME ]]; then
 	rc=${PIPESTATUS[0]}
 	if [[ ! -x $CHROME ]]; then
 		[[ $rc -eq 126 ]] && exit 0   # password dialog dismissed
-		zenity --error --title="$TITLE" --width=440 \
-			--text="Google Chrome couldn't be installed. Check the network connection and try again.\n\nDetails: /var/log/pidesktop-install-chrome.log"
+		# only the last run's section (each starts with "== "), and only apt's error line: apt also logs "Could not get
+		# lock" while it waits successfully, and the log keeps every earlier run
+		if awk '/^== /{s=""} {s=s $0 "\n"} END{printf "%s", s}' /var/log/pidesktop-install-chrome.log 2>/dev/null | grep -q '^E: Could not get lock'; then
+			MSG="The system was still installing its own updates, so Google Chrome couldn't be installed yet.\n\nWait a minute and click Google Chrome again."
+		else
+			MSG="Google Chrome couldn't be installed. Check the network connection and try again."
+		fi
+		zenity --error --title="$TITLE" --width=440 --text="$MSG\n\nDetails: /var/log/pidesktop-install-chrome.log"
 		exit 1
 	fi
 	zenity --question --title="$TITLE" --width=440 --ok-label="Make Default" --cancel-label="Keep Current" \

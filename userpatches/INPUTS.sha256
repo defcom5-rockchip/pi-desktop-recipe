@@ -6,11 +6,11 @@ d3b074fac727820326eafa7b5cc54efba075e2599a61968df750c6f64df4c5c3  overlay/pidesk
 8d1141f6a8778501c25ba5115fca92f04ec00cf7eccd14375024759067a9a864  overlay/pidesktop/debs/gst-plugins-good/gstreamer1.0-pulseaudio_1.28.2-2ubuntu0.4+pd1_arm64.deb
 533fc920220f36e0614e0e4808eabea55976c5af84f9b4996971862d183d2b62  overlay/pidesktop/debs/libmali-valhall-g610-g24p0-wayland-gbm_1.9-1_arm64.deb
 5e6ea2062542bd56c6bdf294dadfabfdc7367bc7330ed9ec5e060f05da97d8ac  overlay/pidesktop/debs/media/librga2_2.2.0+git20260725.26a50ef-0ubuntu1~rk1_arm64.deb
-48eed2ab0c0d24257411a6d0cd316300c7b4b35f3c7565947b3cf71811aec7f0  overlay/pidesktop/debs/media/librockchip-mpp-dev_1.5.0+git20260805.a8b19653+ds-0ubuntu1~rk1+pd34_arm64.deb
-a3891fe20c81c54551949bfb5fe9cb6e4409f57afee47391826c8d99c2c5456f  overlay/pidesktop/debs/media/librockchip-mpp1_1.5.0+git20260805.a8b19653+ds-0ubuntu1~rk1+pd34_arm64.deb
-cbe6040c60b53804c52cabccd8ffbe39296c26db7c7b88bd00a923a55b86e519  overlay/pidesktop/debs/media/librockchip-vpu1_1.5.0+git20260805.a8b19653+ds-0ubuntu1~rk1+pd34_arm64.deb
-6289ed7925be74a517408a791f7ce46e90c04302be0451c0ba4ce683b3138579  overlay/pidesktop/debs/media/mpv_0.41.0-2ubuntu4+pd2_arm64.deb
-ffc541e59e76e73cb77c3bc0bba3a19a32d859225e7b31b9c6af325953e96a91  overlay/pidesktop/debs/media/rockchip-vaapi_3.5.0-1_arm64.deb
+3413465aa3712d581f4339dfafc628f129c0250a72ddb487a4ea039d4776fbd1  overlay/pidesktop/debs/media/librockchip-mpp-dev_1.5.0+git20260805.a8b19653+ds-0ubuntu1~rk1+pd35_arm64.deb
+4030b93181087f5225c2e35636623ad9c73c88c57d94ad551d2e442500946f15  overlay/pidesktop/debs/media/librockchip-mpp1_1.5.0+git20260805.a8b19653+ds-0ubuntu1~rk1+pd35_arm64.deb
+70ed08e111a09a57f97429e22a1f5ee10d066da2313ae4bc23d3ee193db13ff4  overlay/pidesktop/debs/media/librockchip-vpu1_1.5.0+git20260805.a8b19653+ds-0ubuntu1~rk1+pd35_arm64.deb
+dd55a0630ee83a02c7d20ec37fccb752e56d1e4eced390020bc724eb94d1ee95  overlay/pidesktop/debs/media/mpv_0.41.0-2ubuntu4+pd3_arm64.deb
+d0022adf792e7b59cf8f97fc3dafc8a117e6a2e060fa176991bd5edbd7f09e64  overlay/pidesktop/debs/media/rockchip-vaapi_4.0.0-1_arm64.deb
 63bef37d4ca9e545eaf8c0e85796add72290dbf3168fd268dc48ecdb113b9ae7  overlay/pidesktop/debs/pipewire/gstreamer1.0-pipewire_1.6.10-1~pd55_arm64.deb
 80440324555956ef90ed3a3bfa687e46a5a75fc9f517401ce842579dc9e1c278  overlay/pidesktop/debs/pipewire/libpipewire-0.3-0t64_1.6.10-1~pd55_arm64.deb
 63f49d33daa8e272ac5dc851030fdb0395f32ace9e9ccaf67b6086040673c024  overlay/pidesktop/debs/pipewire/libpipewire-0.3-common_1.6.10-1~pd55_all.deb

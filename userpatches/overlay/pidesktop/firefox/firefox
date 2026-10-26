@@ -16,4 +16,20 @@ case ${PIDESKTOP_FFMALI:-1} in
 	*)  [ -f /usr/local/lib/pidesktop-firefox-mali/libpidesktop-ffmali.so.1 ] && [ -e /usr/lib/aarch64-linux-gnu/libmali.so.1 ] \
 	        || export RKVA_HIDE_10BIT=1 ;;
 esac
+# DRM (6.0): Firefox loads Widevine from folders named in MOZ_GMP_PATH. Mozilla ships no Widevine for this platform, but
+# Google Chrome's arm64 package carries one, which Firefox loads (same module interface; checked 2026-10-23 with Firefox
+# 158: module loads, license request generated). When Chrome is installed, a folder of two links to Chrome's files is kept
+# in the user's cache and named here; nothing is copied, the module stays Google's install under Google's licence. The
+# matching prefs are in vaapi.js. The folder must sit under one named gmp-widevinecdm: Firefox's plugin process derives the
+# library name from the parent folder's name minus "gmp-", and crashes ("Plugin file does not exist") on any other layout.
+_wv=/opt/google/chrome/WidevineCdm
+if [ -r "$_wv/manifest.json" ] && [ -r "$_wv/_platform_specific/linux_arm64/libwidevinecdm.so" ]; then
+	_wvd="${XDG_CACHE_HOME:-$HOME/.cache}/pidesktop-firefox-widevine/gmp-widevinecdm/system-installed"
+	if mkdir -p "$_wvd" 2>/dev/null && ln -sfn "$_wv/_platform_specific/linux_arm64/libwidevinecdm.so" "$_wvd/libwidevinecdm.so" 2>/dev/null \
+	   && ln -sfn "$_wv/manifest.json" "$_wvd/manifest.json" 2>/dev/null; then
+		case ":${MOZ_GMP_PATH:-}:" in *":$_wvd:"*) ;; *) export MOZ_GMP_PATH="$_wvd${MOZ_GMP_PATH:+:$MOZ_GMP_PATH}" ;; esac
+	fi
+	unset _wvd
+fi
+unset _wv
 exec /usr/lib/firefox/firefox "$@"

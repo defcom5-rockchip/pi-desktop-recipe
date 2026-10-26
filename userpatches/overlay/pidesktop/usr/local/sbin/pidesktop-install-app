@@ -73,8 +73,20 @@ esac
 [[ $EUID -eq 0 ]] || { echo "must run as root" >&2; exit 1; }
 exec 9>/run/lock/pidesktop-install-app.lock
 flock -n 9 || { echo "another install is already running" >&2; exit 3; }
+APT_LOCK=(-o DPkg::Lock::Timeout=600)
 exec > >(tee -a "$LOG") 2>&1
 echo "== $(date '+%F %T') installing $APP ($PKGS)"
+# First boot: apt-daily refreshes the package lists and the daily security updates install right after login, holding
+# apt's locks for a few minutes. DPkg::Lock::Timeout waits for dpkg's lock, but apt-get update tries its lists lock only
+# once, so wait for all of them here (up to 10 minutes) and say so; the progress dialog shows this line.
+wait_apt() {
+	local n=0
+	while fuser /var/lib/apt/lists/lock /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock >/dev/null 2>&1; do
+		if [[ $n -eq 0 ]]; then echo "Waiting for system updates to finish..."; fi
+		n=$((n + 1)); if [[ $n -ge 300 ]]; then break; fi
+		sleep 2
+	done
+}
 export DEBIAN_FRONTEND=noninteractive
 
 if [[ $APP == vscodium && ! -f $VSCODIUM_SOURCES ]]; then
@@ -93,10 +105,11 @@ EOF
 fi
 
 if [[ ! -x $BIN ]]; then
+	wait_apt
 	echo "Updating package lists"
-	apt-get update -q
+	apt-get "${APT_LOCK[@]}" update -q
 	echo "Downloading and installing $APP"
-	apt-get install -y -q $PKGS
+	apt-get "${APT_LOCK[@]}" install -y -q $PKGS
 fi
 [[ -x $BIN ]] || { echo "E: $APP is not installed after apt finished"; exit 1; }
 [[ $APP == firefox ]] && firefox_apply_pidesktop_pieces

@@ -4,6 +4,13 @@ Pi-Desktop 4.5 ships Ubuntu 26.04's mpv source package `0.41.0-2ubuntu4` rebuilt
 `0.41.0-2ubuntu4+pd2` (binary packages `mpv`, `libmpv2`; `libmpv-dev` is built too). It links Ubuntu's libplacebo
 (`libplacebo360`) like Ubuntu's own build.
 
+Plaid Pi 6.0 ships `0.41.0-2ubuntu4+pd3`: the `+pd2` binaries unchanged, repacked with a new `mpv.conf`
+(`vd-lavc-film-grain=cpu`, so AV1 film grain is applied by the decoder: by Plaid Pi's MPP in hardware, by dav1d in
+software). libplacebo's grain shader does not compile on the Mali driver for 10-bit video (the luma plane is an integer
+texture there), which dropped the grain and failed the first frame. Its source package is `+pd2`'s with
+`debian/mpv.conf.ubuntu` and `debian/changelog` changed; `build-mpv-deb.sh` still builds `+pd2`, so a full rebuild must
+carry the new `mpv.conf` (this folder's copy) and the new version.
+
 **Why:** Arm's proprietary Mali GL driver on the Orange Pi 5B imports the brightness plane of a 10-bit frame
 (`DRM_FORMAT_R16`) as an integer texture, which a video shader reads as 0, and refuses the two-channel 8-bit colour
 plane of an 8-bit frame (`GR88`) outright (rockchip-vaapi KNOWN-ISSUES KI-11). Ubuntu's mpv therefore draws 10-bit
@@ -40,10 +47,10 @@ patched source package to `WORKDIR/out/<version>/`.
 **Licences:** mpv is GPL-2.0-or-later in its default configuration (Ubuntu's copyright file has the details); as
 Ubuntu builds it, linked with libcdio (GPL-3.0-or-later), the binaries are conveyed under GPL-3.0-or-later. The patches
 change LGPL-2.1-or-later files and are LGPL-2.1-or-later. These scripts are GPL-3.0-or-later
-like the rest of the recipe. **Complete corresponding source:** the patched source package (`mpv_0.41.0-2ubuntu4+pd2.dsc`,
-Ubuntu's `mpv_0.41.0.orig.tar.gz`, `mpv_0.41.0-2ubuntu4+pd2.debian.tar.xz`), published with the Pi-Desktop release
+like the rest of the recipe. **Complete corresponding source:** the patched source package (`mpv_0.41.0-2ubuntu4+pd3.dsc`,
+Ubuntu's `mpv_0.41.0.orig.tar.gz`, `mpv_0.41.0-2ubuntu4+pd3.debian.tar.xz`), published with the Pi-Desktop release
 that ships these packages.
 
-**Updates:** the image holds `mpv`, because any Ubuntu update of mpv (`0.41.0-2ubuntu4.x` sorts above `+pd2`) would
+**Updates:** the image holds `mpv`, because any Ubuntu update of mpv (`0.41.0-2ubuntu4.x` sorts above `+pd3`) would
 replace it and draw 10-bit near-black with Pi-Desktop's configuration. Ubuntu's mpv fixes therefore arrive with a
 Pi-Desktop rebuild: bump `UBV`/`PDV` in `build-mpv-deb.sh`, check that the patches still apply, rebuild, retest.

@@ -10,7 +10,9 @@ Comment:
  What Plaid Pi adds to the image, and the licence of each part:
  .
   * Plaid Pi's own programs and scripts (/usr/local/bin/pidesktop-*, /usr/local/sbin/pidesktop-*,
-    the two Files add-ons, the Network Drive window and its root helper, systemd units, configuration):
+    the two Files add-ons, the Network Drive window and its root helper, the Widevine pointers
+    (/etc/chromium.d/pidesktop-widevine and the Firefox launcher's MOZ_GMP_PATH, 6.0: point Chromium and Firefox at Chrome's
+    own Widevine; nothing copied), systemd units, configuration):
     GPL-3.0-or-later.
   * Plaid Pi's artwork (the Plaid wallpaper, the penguin screensaver clip and still, the tartan
     terminal logo, the pi-desktop logo and the installer icons): CC BY-SA 4.0.
@@ -22,11 +24,11 @@ Comment:
     unmodified (GPL-2.0+), with Rockchip's binary boot blobs (rkbin, Rockchip's licence).
   * Packages Plaid Pi rebuilt or patched (sources in the recipe repository): gnome-control-center (+pd3),
     Rhythmbox 3.5.1, PipeWire 1.6.10 / WirePlumber 0.5.18 (upstream PipeWire 1.6.10 on Debian's 1.6.9-2
-    packaging, Debian's WirePlumber 0.5.18-1, rebuilt as ~pd55), rockchip-vaapi 3.5.0 (https://github.com/defcom5-rockchip/rockchip-vaapi),
-    librockchip-mpp +pd34 (eight Plaid Pi patches: AV1 deferred refresh, and the VP9 frame-label wrap of
-    rockchip-linux/mpp PR #976; Apache-2.0), librga (rebuilt for 26.04), the libmali-hook shim, gst-plugins-good
+    packaging, Debian's WirePlumber 0.5.18-1, rebuilt as ~pd55), rockchip-vaapi 4.0.0 (https://github.com/defcom5-rockchip/rockchip-vaapi),
+    librockchip-mpp +pd35 (nine Plaid Pi patches: AV1 deferred refresh, the VP9 frame-label wrap of
+    rockchip-linux/mpp PR #976, and AV1 film grain from rockchip-linux/mpp issue #974; Apache-2.0), librga (rebuilt for 26.04), the libmali-hook shim, gst-plugins-good
     (+pd1, one upstream FLAC fix), and mpv (Ubuntu's mpv 0.41.0-2ubuntu4 rebuilt with two patches and Plaid Pi's
-    mpv.conf as +pd2; GPL-3.0+ as linked). Complete source for mpv, gst-plugins-good, librockchip-mpp, PipeWire and WirePlumber is
+    mpv.conf as +pd3; GPL-3.0+ as linked). Complete source for mpv, gst-plugins-good, librockchip-mpp, PipeWire and WirePlumber is
     published with each Plaid Pi release next to the image, and the patches and build scripts are in the recipe repository (mpv/, gst-plugins-good/).
   * Pro Updates 1.5.0, the update window (pro-updates, pro-updates-gui and its root helper): GPL-3.0-or-later,
     by the Plaid Pi maintainer. Source: https://github.com/defcom5-rockchip/pro-updates tag v1.5.0; licence

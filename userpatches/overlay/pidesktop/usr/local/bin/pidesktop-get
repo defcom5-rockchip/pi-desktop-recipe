@@ -41,7 +41,7 @@ if [[ ! -x $BIN ]]; then
 	if [[ ! -x $BIN ]]; then
 		[[ $rc -eq 126 ]] && exit 0   # password dialog dismissed
 		zenity --error --title="$TITLE" --width=460 \
-			--text="$TITLE couldn't be installed. Check the network connection and try again.\n\nDetails: /var/log/pidesktop-install-app.log"
+			--text="$( if awk '/^== /{s=""} {s=s $0 "\n"} END{printf "%s", s}' /var/log/pidesktop-install-app.log 2>/dev/null | grep -q '^E: Could not get lock'; then printf '%s' "The system was still installing its own updates, so $TITLE couldn't be installed yet.\n\nWait a minute and click $TITLE again."; else printf '%s' "$TITLE couldn't be installed. Check the network connection and try again."; fi)\n\nDetails: /var/log/pidesktop-install-app.log"
 		exit 1
 	fi
 fi

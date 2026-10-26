@@ -1,4 +1,4 @@
-Plaid Pi 5.5 - Quick How-To
+Plaid Pi 6.0 - Quick How-To
 ===========================
 
 
@@ -14,6 +14,13 @@ doesn't allow it to be passed on, but it's a couple of clicks away:
 
 Chrome then updates together with the rest of your software, and Plaid Pi
 starts it with hardware video decoding switched on.
+
+Installing Chrome also brings Widevine, the module streaming services use for
+protected video. Chrome plays it right away; Chromium and Firefox (installed
+from the dock) pick it up the next time you start them (Plaid Pi points them
+at Chrome's copy; nothing is copied), so keep Chrome installed. Linux gets
+Widevine's software level: the video is decoded by the processor, and each
+service picks the quality (in our tests Netflix sent 1080p, Prime Video SD).
 
 
 2. Firefox, LibreOffice, GIMP, Inkscape, Thunderbird and VSCodium

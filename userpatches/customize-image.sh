@@ -1,11 +1,11 @@
 #!/bin/bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 defcom5-rockchip (Pi-Desktop). See LICENSE in the recipe repository.
-# Plaid Pi 5.5 layer — runs as root inside the arm64 rootfs chroot at the end of Armbian's customize step.
+# Plaid Pi 6.0 layer — runs as root inside the arm64 rootfs chroot at the end of Armbian's customize step.
 # Args: RELEASE LINUXFAMILY BOARD BUILD_DESKTOP. Overlay (userpatches/overlay) is bind-mounted read-only at /tmp/overlay.
 RELEASE=$1; LINUXFAMILY=$2; BOARD=$3; BUILD_DESKTOP=$4
 OV=/tmp/overlay/pidesktop
-PDV="${PIDESKTOP_VERSION:-$(cat /etc/pi-desktop-release 2>/dev/null)}"; PDV="${PDV:-5.5}"   # set by the config hook pre_customize_image__pidesktop_version
+PDV="${PIDESKTOP_VERSION:-$(cat /etc/pi-desktop-release 2>/dev/null)}"; PDV="${PDV:-6.0}"   # set by the config hook pre_customize_image__pidesktop_version
 GPU="${PIDESKTOP_GPU_STACK:-mali}"
 export DEBIAN_FRONTEND=noninteractive APT_LISTCHANGES_FRONTEND=none
 # dpkg must never stop at a conffile prompt in here (no stdin): keep the installed version of a changed conffile.
@@ -63,6 +63,21 @@ cat > /etc/systemd/system/user@.service.d/pidesktop-realtime.conf <<-'U'
 	LimitNICE=-15
 U
 log "realtime: user@.service drop-in (RTPRIO 95, NICE -15, MEMLOCK inf)"
+# Browser profiles in RAM (profile-sync-daemon) lost on reboot (measured on the development board, 2026-10-24): two causes.
+# 1) Ubuntu's systemd caps user-session shutdown at 5 s (/usr/lib/systemd/system/user@.service.d/timeout.conf); psd's
+#    copy-back of a few hundred MB took 7 s and was SIGKILLed half-written. 60 s = half systemd's own 120 s for user@.
+# 2) psd-resync.service owns the fuse-overlayfs processes and is stopped BEFORE psd.service (After=psd.service), so its
+#    default KillMode=control-group killed the overlays and psd's copy-back aborted at the first missing profile.
+cat > /etc/systemd/system/user@.service.d/zz-pidesktop-psd-timeout.conf <<-'U'
+	[Service]
+	TimeoutStopSec=60
+U
+mkdir -p /etc/systemd/user/psd-resync.service.d
+cat > /etc/systemd/user/psd-resync.service.d/10-pidesktop-keep-overlays.conf <<-'U'
+	[Service]
+	KillMode=process
+U
+log "psd: user@ stop timeout 60 s + psd-resync KillMode=process (RAM profiles survive reboot)"
 if ls "$OV"/debs/pipewire/*.deb >/dev/null 2>&1; then
 	# PipeWire 1.6.10 + WirePlumber 0.5.18 (upstream 1.6.10 on Debian's 1.6.9-2 packaging + Debian's 0.5.18-1, rebuilt for
 	# resolute arm64 as ~pd55; 5.0 shipped 1.6.9/0.5.17 ~pd31) — ABI-compatible bugfix bump over Ubuntu's 1.6.2/0.5.13
@@ -171,7 +186,7 @@ cat > /etc/X11/xorg.conf.d/10-rockchip-kms.conf <<-'X'
 	EndSection
 X
 
-# ---------------------------------------------------------------- decode: patched MPP (+ matching -dev), rockchip-vaapi 3.5.0, Pi-Desktop's mpv + our conf
+# ---------------------------------------------------------------- decode: patched MPP (+ matching -dev), rockchip-vaapi 4.0.0, Pi-Desktop's mpv + our conf
 apt-get install -y -qq --no-install-recommends libva2 libva-drm2 libva-wayland2 libva-x11-2 vainfo libdrm2 mpv ffmpeg v4l-utils >/dev/null || warn "media base install had errors"
 if ls "$OV"/debs/media/*.deb >/dev/null 2>&1; then
 	# The decode stack (MPP, librga, rockchip-vaapi) in one transaction; Pi-Desktop's mpv in its own, so a problem with
@@ -248,7 +263,7 @@ apt-get install -y -qq --no-install-recommends chromium chromium-sandbox >/dev/n
 # from the PPA pinned above, with the Mali/VA-API pieces below applied on the user's own machine. Purge any copy a tier left.
 dpkg -s firefox >/dev/null 2>&1 && { apt-get purge -y -qq firefox >/dev/null 2>&1 && log "firefox: removed from the image (first-click installer instead)" || warn "firefox purge failed"; }
 install -d /etc/chromium.d
-install -m0644 -o root -g root "$OV"/etc/chromium.d/pidesktop-vaapi -t /etc/chromium.d/ 2>/dev/null   # by name: the launcher sources every file there
+install -m0644 -o root -g root "$OV"/etc/chromium.d/pidesktop-vaapi "$OV"/etc/chromium.d/pidesktop-widevine -t /etc/chromium.d/ 2>/dev/null   # by name: the launcher sources every file there; pidesktop-widevine = DRM via Chrome's Widevine (6.0)
 # Firefox on the blob. Plaid Pi ships no Firefox (Mozilla trademark: stock builds only, installed on first click); what
 # ships is our own library that the launcher loads into Firefox only: libpidesktop-ffmali (overlay firefox/ffmali/README).
 # Firefox loads EGL and GL by the names libEGL.so(.1) / libGL.so(.1); in this private directory they are that library,
