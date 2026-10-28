@@ -1,0 +1,38 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: defcom5-rockchip <286489597+defcom5-rockchip@users.noreply.github.com>
+Date: Wed, 28 Oct 2026 12:00:00 -0700
+Subject: [PATCH] arm64: dts: rockchip: orangepi-5-plus: source vp0 dclk from
+ v0pll
+
+The same change the Orange Pi 5/5B carries for HDMI0 4K@120 (FRL modes):
+rockchip_rk3588_drm_dclk_set_rate() re-rates the source PLL to the exact
+pixel clock only when that PLL is v0pll; gpll/cpll cannot give
+1082.89 MHz. Assign dclk_vop0_src to v0pll as the RK3588 EVB boards do.
+HDMI1 on vp1 is unchanged.
+
+Compile-tested only: no Orange Pi 5 Plus has run the 4K@120 tests.
+
+Assisted-by: LLM
+---
+diff --git a/arch/arm64/boot/dts/rockchip/rk3588-orangepi-5-plus.dts b/arch/arm64/boot/dts/rockchip/rk3588-orangepi-5-plus.dts
+--- a/arch/arm64/boot/dts/rockchip/rk3588-orangepi-5-plus.dts
++++ b/arch/arm64/boot/dts/rockchip/rk3588-orangepi-5-plus.dts
+@@ -1311,6 +1311,18 @@
+     cursor-win-id=<ROCKCHIP_VOP2_ESMART0>;
+     rockchip,plane-mask = <(1 << ROCKCHIP_VOP2_CLUSTER0 | 1 << ROCKCHIP_VOP2_ESMART0)>;
+     rockchip,primary-plane = <ROCKCHIP_VOP2_CLUSTER0>;
++    /*
++     * HDMI0 4K@120 runs FRL, where dclk cannot be sourced from the HDMI PHY
++     * PLL and comes from the CRU instead. rockchip_rk3588_drm_dclk_set_rate()
++     * only re-rates the source PLL to the exact pixel clock when that PLL is
++     * v0pll (gpll/cpll are shared and only offer integer dividers), so hang
++     * dclk_vop0_src off v0pll, as the Orange Pi 5/5B change does. v0pll is
++     * shared with vp2 (DP, rk3588s.dtsi), so a simultaneous DP output would
++     * contend for its rate. HDMI1 (vp1) keeps its PHY-sourced dclk: only one
++     * port can run FRL from v0pll.
++     */
++    assigned-clocks = <&cru DCLK_VOP0_SRC>;
++    assigned-clock-parents = <&cru PLL_V0PLL>;
+ };
+ 
+ &vp1 {

@@ -1,0 +1,14 @@
+[Unit]
+Description=Plaid Pi: send HDMI sound to the HDMI port the monitor is on (boards with two HDMI outputs)
+ConditionPathExists=/proc/asound/rockchiphdmi1
+ConditionUser=!@system
+After=pipewire-pulse.service wireplumber.service
+Wants=pipewire-pulse.service
+
+[Service]
+ExecStart=/usr/local/bin/pidesktop-hdmi-follow
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target

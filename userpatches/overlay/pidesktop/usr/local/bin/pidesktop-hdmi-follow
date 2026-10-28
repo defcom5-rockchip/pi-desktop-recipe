@@ -1,0 +1,29 @@
+#!/bin/bash
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 defcom5-rockchip (Plaid Pi). See LICENSE in the recipe repository.
+# Plaid Pi: on boards with two HDMI outputs (Orange Pi 5 Plus), send HDMI sound to the port the monitor is on.
+# Without a UCM profile PipeWire cannot see which HDMI port has a monitor (its HDMI ports report no availability),
+# so it picks hdmi0 by priority and plays into an empty port when the monitor is on hdmi1. Each HDMI sound card does
+# report its connector through an ALSA jack control ("rockchip-hdmiN Jack"). This moves the default output from an
+# HDMI port with nothing connected to the other HDMI port when that one is connected, at login and on every hotplug.
+# It acts only when the default output is one of the two HDMI sinks, so headphones, Bluetooth, DisplayPort or a
+# manual choice of another output are left alone; with both ports connected it changes nothing.
+C0=rockchiphdmi0; C1=rockchiphdmi1
+sink(){ pactl list short sinks 2>/dev/null | awk -v p="alsa_output.platform-$1-sound." 'index($2,p)==1 {print $2; exit}'; }
+jack(){ amixer -c "$1" cget iface=CARD,name="$2 Jack" 2>/dev/null | sed -n 's/.*: values=//p'; }
+apply() {
+	local s0 s1 cur j0 j1; s0=$(sink hdmi0); s1=$(sink hdmi1); [ -n "$s0" ] && [ -n "$s1" ] || return 0
+	cur=$(pactl get-default-sink 2>/dev/null); j0=$(jack $C0 rockchip-hdmi0); j1=$(jack $C1 rockchip-hdmi1)
+	if [ "$cur" = "$s0" ] && [ "$j0" = off ] && [ "$j1" = on ]; then
+		pactl set-default-sink "$s1" && logger -t pidesktop-hdmi "monitor on the second HDMI port: $s0 -> $s1"
+	elif [ "$cur" = "$s1" ] && [ "$j1" = off ] && [ "$j0" = on ]; then
+		pactl set-default-sink "$s0" && logger -t pidesktop-hdmi "monitor on the first HDMI port: $s1 -> $s0"
+	fi
+}
+for _ in $(seq 1 30); do pactl info >/dev/null 2>&1 && [ -n "$(sink hdmi0)" ] && [ -n "$(sink hdmi1)" ] && break; sleep 1; done
+apply
+# Jack events from both cards. If either monitor process exits (a card went away) the pipe ends, the script exits,
+# and systemd restarts it.
+{ alsactl monitor "hw:$C0" & p0=$!; alsactl monitor "hw:$C1" & p1=$!; wait -n; kill "$p0" "$p1"; } 2>/dev/null | while read -r line; do
+	case "$line" in *" Jack"*) sleep 0.5; apply ;; esac
+done

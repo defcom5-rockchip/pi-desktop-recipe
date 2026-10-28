@@ -654,6 +654,10 @@ else
 fi
 # licence summary inside the image (our code GPL-3.0-or-later, our art CC BY-SA 4.0, where the sources are)
 install -Dm0644 -o root -g root "$OV"/usr/share/doc/pi-desktop/copyright /usr/share/doc/pi-desktop/copyright
+case "$BOARD" in   # the copyright summary names the board the image is for
+	orangepi5)      sed -i 's/an image for the Orange Pi 5B built/an image for the Orange Pi 5 built/' /usr/share/doc/pi-desktop/copyright;;
+	orangepi5-plus) sed -i 's/an image for the Orange Pi 5B built/an image for the Orange Pi 5 Plus built/' /usr/share/doc/pi-desktop/copyright;;
+esac
 cat > /etc/update-motd.d/05-pi-desktop <<-M
 	#!/bin/sh
 	printf '\\n  Plaid Pi ${PDV}  ·  built from Ubuntu 26.04 packages  ·  GNOME 50  ·  kernel %s\\n\\n' "\$(uname -r)"
@@ -675,7 +679,13 @@ for f in /boot/armbianEnv.txt /usr/share/armbian/armbianEnv.txt; do
 	sed -i 's/cma=256M/cma=512M/' "$f"
 	grep -q '^extraargs=' "$f" || echo 'extraargs=' >> "$f"
 	grep -q 'dw_hdmi_qp.frl_update_poll_ms=' "$f" || sed -i '/^extraargs=/ s/$/ dw_hdmi_qp.frl_update_poll_ms=0/' "$f"
-	grep -q 'rockchipdrm.allow_frl=' "$f" || sed -i '/^extraargs=/ s/$/ rockchipdrm.allow_frl=1/' "$f"
+	# Orange Pi 5 Plus: 4K@120 is not proven there yet (kernel 0020 gives its vp0 the same v0pll dclk the 5B needed, but no
+	# 5 Plus has run the 120 Hz tests), so its image keeps HDMI 2.1 modes hidden; a tester adds the argument by hand.
+	if [[ "$BOARD" == "orangepi5-plus" ]]; then
+		log "$f: rockchipdrm.allow_frl=1 NOT set on the 5 Plus (4K@120 untested there)"
+	else
+		grep -q 'rockchipdrm.allow_frl=' "$f" || sed -i '/^extraargs=/ s/$/ rockchipdrm.allow_frl=1/' "$f"
+	fi
 	log "$f: $(grep ^extraargs "$f")"
 done
 
@@ -696,6 +706,10 @@ systemctl enable pidesktop-es8388-out1.service >/dev/null 2>&1 && log "analog au
 install -Dm0755 "$OV"/usr/local/bin/pidesktop-headphone-follow /usr/local/bin/pidesktop-headphone-follow
 install -Dm0644 "$OV"/etc/systemd/user/pidesktop-headphone-follow.service /etc/systemd/user/pidesktop-headphone-follow.service
 systemctl --global enable pidesktop-headphone-follow.service >/dev/null 2>&1 && log "analog audio: headphone-follow user service enabled" || warn "headphone-follow enable failed"
+# two HDMI outputs (Orange Pi 5 Plus): follow the connected port. The unit's ConditionPathExists keeps it idle elsewhere.
+install -Dm0755 "$OV"/usr/local/bin/pidesktop-hdmi-follow /usr/local/bin/pidesktop-hdmi-follow
+install -Dm0644 "$OV"/etc/systemd/user/pidesktop-hdmi-follow.service /etc/systemd/user/pidesktop-hdmi-follow.service
+systemctl --global enable pidesktop-hdmi-follow.service >/dev/null 2>&1 && log "HDMI audio: hdmi-follow user service enabled (runs only with a second HDMI card)" || warn "hdmi-follow enable failed"
 
 # ---------------------------------------------------------------- Bluetooth: the two 2.0.x AP6275P fixes (CNX 2026-07-27) — NEVER drop these again
 # Fix 2 (ubuntu-rockchip#2 / f432b71): Cypress BT/WiFi coex timing. This kernel is bcmdhd (CONFIG_BCMDHD=y) and downloads
@@ -762,8 +776,12 @@ _left=$(find /etc/chromium/policies /etc/opt/chrome/policies -type f 2>/dev/null
 apt-get install -y -qq --no-install-recommends fastfetch >/dev/null 2>&1 || true
 install -Dm0644 "$OV"/fastfetch/plaid.ans /usr/share/pi-desktop/fastfetch/plaid.ans
 install -Dm0644 "$OV"/fastfetch/config.jsonc /etc/fastfetch/config.jsonc
-# the greeting's footer names the board: "ORANGE PI 5B" in the overlay, the Orange Pi 5 build says "ORANGE PI 5"
-case "$BOARD" in orangepi5) sed -i 's#// ORANGE PI 5B - #// ORANGE PI 5 - #' /etc/fastfetch/config.jsonc;; esac
+# the greeting's footer names the board: "ORANGE PI 5B" in the overlay, the Orange Pi 5 build says "ORANGE PI 5", the
+# 5 Plus build "ORANGE PI 5 PLUS"
+case "$BOARD" in
+	orangepi5)      sed -i 's#// ORANGE PI 5B - #// ORANGE PI 5 - #' /etc/fastfetch/config.jsonc;;
+	orangepi5-plus) sed -i 's#// ORANGE PI 5B - #// ORANGE PI 5 PLUS - #' /etc/fastfetch/config.jsonc;;
+esac
 grep -q PI_DESKTOP_FETCHED /etc/bash.bashrc || cat "$OV"/fastfetch/bash.bashrc.snippet >> /etc/bash.bashrc
 log "test1 fixes: codec udev, mpris-proxy off, mdns+gvfs-fuse+cifs, root ssh key-only, plaid fastfetch"
 
