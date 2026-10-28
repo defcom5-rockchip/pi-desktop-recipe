@@ -19,7 +19,7 @@ sub("rebuilt or patched (sources in the recipe repository): gnome-control-center
 sub(r"  \* The Plaid look: the Dhruva dock .*?Details: /usr/share/pi-desktop/look/README\.\n",
     "  * The Plaid look for Plasma (/usr/share/plasma/look-and-feel/org.plaidpi.desktop and the Plaid Pi Dark colour\n"
     "    scheme): KDE's Breeze Dark with the Plaid orange accent, the Plaid wallpaper and Plaid Pi's panel launchers,\n"
-    "    GPL-2.0-or-later as Breeze.\n", regex=True)
+    "    GPL-2.0-or-later as Breeze; Killswitch (/usr/local/bin/killswitch), Plaid Pi's, GPL-3.0-or-later.\n", regex=True)
 sub("Files: /usr/share/backgrounds/pi-desktop/* /usr/share/pi-desktop/screensaver/* /usr/share/pi-desktop/fastfetch/plaid.ans",
     "Files: /usr/share/backgrounds/pi-desktop/* /usr/share/wallpapers/PlaidPi/* /usr/share/pi-desktop/fastfetch/plaid.ans")
 sub(r"\nFiles: /usr/share/gnome-shell/extensions/dhruva@narkagni/\*\n.*?published with each Plaid Pi release\.\n", "\n", regex=True)
@@ -31,5 +31,6 @@ sub(r"\nFiles: /usr/share/icons/Plaid/\*\n.*?at your option\.\n?",
     " Derived from KDE's Breeze Dark look-and-feel package (plasma-workspace) and colour scheme (breeze) as shipped by\n"
     " Ubuntu 26.04: the Plaid orange accent, the Plaid wallpaper and Plaid Pi's panel launchers.\n"
     " On Debian-based systems the full text is in /usr/share/common-licenses/GPL-2.\n", regex=True)
+s = re.sub(r"\n{3,}", "\n\n", s)   # no double blank lines left by removed paragraphs
 open(p, "w", encoding="utf-8").write(s)
 print("copyright-kde: KDE edition notice written")

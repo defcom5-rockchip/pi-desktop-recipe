@@ -40,7 +40,7 @@ safe_purge() {
 # Read against Armbian's 26.04 5 Plus KDE image (Plasma 6.6.6): Breeze Dark ships contents/{defaults,layouts,previews},
 # no /etc/xdg KDE files exist, BreezeDark.colors carries the blue 24 times, the SDDM Breeze theme reads theme.conf.user.
 pidesktop_kde_look() {
-	local LF=/usr/share/plasma/look-and-feel BD=/usr/share/plasma/look-and-feel/org.kde.breezedark.desktop
+	local BD=/usr/share/plasma/look-and-feel/org.kde.breezedark.desktop
 	local PP=/usr/share/plasma/look-and-feel/org.plaidpi.desktop CS=/usr/share/color-schemes KO="$OV"/kde
 	[[ -d $BD ]] || { warn "KDE look: Breeze Dark look-and-feel missing — Plaid look NOT applied"; return 0; }
 	rm -rf "$PP"; install -d "$PP/contents/layouts"
@@ -49,7 +49,8 @@ pidesktop_kde_look() {
 	install -m0644 "$KO"/look-and-feel/org.plaidpi.desktop/contents/layouts/org.kde.plasma.desktop-layout.js "$PP/contents/layouts/"
 	[[ -d $BD/contents/previews ]] && cp -r "$BD/contents/previews" "$PP/contents/"
 	if [[ -f $CS/BreezeDark.colors ]]; then
-		sed -e 's/61,174,233/232,80,32/g' -e 's/^Name=.*/Name=Plaid Pi Dark/' -e '/^Name\[/d' "$CS/BreezeDark.colors" > "$CS/PlaidPiDark.colors"
+		sed -e 's/61,174,233/232,80,32/g' -e 's/29,153,243/240,120,70/g' -e 's/30,87,116/116,40,16/g' \
+			-e 's/^Name=.*/Name=Plaid Pi Dark/' -e '/^Name\[/d' -e 's/^ColorScheme=BreezeDark$/ColorScheme=PlaidPiDark/' "$CS/BreezeDark.colors" > "$CS/PlaidPiDark.colors"
 		chmod 0644 "$CS/PlaidPiDark.colors"
 	else
 		warn "KDE look: BreezeDark.colors missing — the accent stays Breeze blue"
@@ -60,6 +61,9 @@ pidesktop_kde_look() {
 	install -Dm0644 "$KO"/xdg/kdeglobals /etc/xdg/kdeglobals
 	install -Dm0644 "$KO"/xdg/kscreenlockerrc /etc/xdg/kscreenlockerrc
 	[[ -d /usr/share/sddm/themes/breeze ]] && install -m0644 "$KO"/sddm/theme.conf.user /usr/share/sddm/themes/breeze/theme.conf.user
+	# Armbian's skel ships a Plasma layout; Plasma keeps a skel layout whose activity it can match and only falls back
+	# to the look-and-feel layout (ours) when it cannot. Remove it so every new user gets ours.
+	rm -f /etc/skel/.config/plasma-org.kde.plasma.desktop-appletsrc
 	chown -R root:root "$PP" /usr/share/wallpapers/PlaidPi
 	log "KDE look: org.plaidpi.desktop (Breeze Dark + Plaid orange $(grep -c '232,80,32' "$CS/PlaidPiDark.colors" 2>/dev/null) times + wallpaper + panel launchers), lock + SDDM wallpaper"
 }
@@ -353,7 +357,7 @@ FULLP=$(dpkg-query -W -f='${db:Status-Abbrev} ${Package}\n' libreoffice-core lib
 if [[ -n $FULLP ]]; then warn "full-tier apps present in a mid-tier image: $FULLP"; else log "apps: mid tier; LibreOffice, GIMP, Inkscape, Thunderbird, VSCodium and Firefox install on first click"; fi
 # Audacity stays in the image: small, and this is an audio box. The mid tier doesn't carry it.
 apt-get install -y -qq audacity >/dev/null 2>&1 && log "audacity: $(dpkg-query -W -f='${Version}' audacity)" || warn "audacity install failed"
-snap list >/dev/null 2>&1 && warn "snapd present: $(snap list 2>/dev/null | tail -n +2 | awk '{print $1}' | tr '\n' ' ')"
+dpkg -s snapd >/dev/null 2>&1 && warn "snapd present (installed: $(dpkg-query -W -f='${Version}' snapd))"   # snap list needs a running snapd, none runs in the chroot
 
 # ---------------------------------------------------------------- default browser = Chromium (Chrome is not shipped; the Chrome
 # launcher offers "make default" after the user installs it). The Google Chrome branch below only applies to a local image
@@ -442,8 +446,10 @@ install -Dm0644 -o root -g root "$HOWTO" "/etc/skel/Desktop/Plaid Pi How-To.txt"
 for t in sleep suspend hibernate hybrid-sleep; do systemctl mask "$t.target" >/dev/null 2>&1; done
 [[ $PDDE == gnome ]] && install -Dm0644 "$OV"/etc/dconf/db/local.d/05-pidesktop-power /etc/dconf/db/local.d/05-pidesktop-power
 # login screen at every boot after first-run setup (Armbian's own autologin off-switch never fires)
+if [[ $PDDE == gnome ]]; then
 install -Dm0644 "$OV"/etc/systemd/system/pidesktop-login-screen.service /etc/systemd/system/pidesktop-login-screen.service
 systemctl enable pidesktop-login-screen.service >/dev/null 2>&1 && log "login screen: autologin removed after first-run setup" || warn "login-screen service enable failed"
+fi
 if [[ $PDDE == kde ]]; then   # the same for SDDM: armbian-firstlogin writes /etc/sddm.conf.d/autologin.conf
 	install -Dm0644 "$OV"/etc/systemd/system/pidesktop-login-screen-sddm.service /etc/systemd/system/pidesktop-login-screen-sddm.service
 	systemctl enable pidesktop-login-screen-sddm.service >/dev/null 2>&1 && log "login screen (SDDM): autologin removed after first-run setup" || warn "login-screen-sddm enable failed"
@@ -503,7 +509,15 @@ fi
 # Armbian's desktop "mid" tier (armbian-configng desktops/yaml/common.yaml) installs vlc for every desktop. Pi-Desktop
 # drops it (2026-09-26): Ubuntu's VLC 3.0.23 freezes the picture on Plaid with its default hardware decoding, and the
 # old backport + software-decode override is gone. Purge exactly the installed vlc/libvlc packages (no autoremove).
+if [[ $PDDE == kde ]]; then
+	# KDE: Phonon's VLC backend (Okular, notifications) needs libvlc5, libvlccore9, vlc-data, vlc-plugin-base and
+	# vlc-plugin-video-output; purge only the VLC player, through safe_purge (refuses if anything else would go).
+	safe_purge vlc vlc-bin vlc-l10n vlc-plugin-qt vlc-plugin-skins2 vlc-plugin-notify vlc-plugin-samba vlc-plugin-access-extra \
+		vlc-plugin-video-splitter vlc-plugin-visualization libvlc-bin || warn "vlc player purge refused on KDE"
+	VLCP=""
+else
 VLCP=$(dpkg-query -W -f='${db:Status-Abbrev} ${Package}\n' 'vlc*' 'libvlc*' 2>/dev/null | awk '$1 ~ /^[ih]i/ {print $2}')
+fi
 if [[ -n $VLCP ]]; then
 	apt-mark unhold $VLCP >/dev/null 2>&1
 	apt-get purge -y -qq $VLCP >/dev/null && log "vlc: purged $(echo $VLCP | wc -w) packages that Armbian's desktop list installed" || warn "vlc purge failed"
@@ -518,7 +532,11 @@ apt-get install -y -qq --no-install-recommends brasero brasero-cdrkit cdrdao >/d
 # ---------------------------------------------------------------- desktop extras
 # no zram-tools: Armbian zram-config already sets up /dev/zram0 swap; both at once = zramswap.service fails every boot
 if [[ $PDDE == kde ]]; then
-	apt-get install -y -qq --no-install-recommends plasma-systemmonitor iw fastfetch >/dev/null 2>&1 || warn "desktop extras install had errors"
+	# zenity: every first-click installer opens with a zenity dialog (GNOME's desktop list brings it, configng's KDE list does
+	# not); the GTK 4 + libadwaita typelibs for the Network Drive and Killswitch windows; flatpak for Pro Updates' per-user
+	# Flathub offer (GNOME gets it through GNOME Software's plugin, kept below).
+	apt-get install -y -qq --no-install-recommends plasma-systemmonitor iw fastfetch zenity gir1.2-gtk-4.0 gir1.2-adw-1 flatpak >/dev/null 2>&1 || warn "desktop extras install had errors"
+	for p in zenity gir1.2-gtk-4.0 gir1.2-adw-1 flatpak; do dpkg -s "$p" >/dev/null 2>&1 || warn "KDE extras: $p NOT installed"; done
 else
 	apt-get install -y -qq --no-install-recommends gnome-system-monitor iw fastfetch dconf-cli gnome-tweaks >/dev/null 2>&1 || warn "desktop extras install had errors"
 fi
@@ -647,6 +665,11 @@ if [[ $PDDE == kde ]]; then   # same decision for KDE's store: Discover (and its
 	_dp=$(dpkg-query -W -f='${db:Status-Abbrev} ${Package}\n' 'plasma-discover*' 2>/dev/null | awk '$1 ~ /^.i/ {print $2}' | xargs)
 	[[ -n $_dp ]] && { safe_purge $_dp || true; }
 	log "KDE: Discover removed [${_dp:-not installed}]"
+	# snapd came in with Discover's snap backend (Recommends) and is enabled; the GNOME image has none (PRIVACY.md).
+	safe_purge snapd || warn "snapd purge refused"
+	# keep what the GNOME image keeps: fwupd (firmware updates, PRIVACY.md lists its timer) and flatpak would otherwise
+	# leave with the hook's autoremove once Discover's backends are gone
+	for p in fwupd flatpak; do dpkg -s "$p" >/dev/null 2>&1 && apt-mark manual "$p" >/dev/null; done
 else
 safe_purge gnome-software gnome-software-common gnome-software-plugin-deb gnome-software-plugin-flatpak \
 	gnome-software-plugin-fwupd gnome-software-plugin-snap || true
@@ -870,7 +893,7 @@ log "journald: persistent (200 MB)"
 # (The first version of this guard sat after the script's exit 0 and never ran; bake #4 of 2026-10-03 shipped without
 # GNOME's Help content because of a purge this guard would not have caught either. Belt and braces: it runs here.)
 MISSING=""
-if [[ $PDDE == kde ]]; then CORE="plasma-workspace plasma-desktop kwin-wayland sddm systemsettings dolphin konsole chromium pipewire wireplumber"
+if [[ $PDDE == kde ]]; then CORE="plasma-workspace plasma-desktop kwin-wayland sddm systemsettings dolphin konsole okular plasma-pa zenity chromium pipewire wireplumber"
 else CORE="gnome-shell gdm3 libmutter-18-0 mutter-common gnome-session-bin gnome-control-center nautilus chromium pipewire wireplumber fonts-adwaita gnome-user-docs yelp"; fi
 for p in $CORE; do
 	dpkg -s "$p" >/dev/null 2>&1 || MISSING="$MISSING $p"
