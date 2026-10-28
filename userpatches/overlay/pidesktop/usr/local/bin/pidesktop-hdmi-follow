@@ -22,8 +22,14 @@ apply() {
 }
 for _ in $(seq 1 30); do pactl info >/dev/null 2>&1 && [ -n "$(sink hdmi0)" ] && [ -n "$(sink hdmi1)" ] && break; sleep 1; done
 apply
-# Jack events from both cards. If either monitor process exits (a card went away) the pipe ends, the script exits,
-# and systemd restarts it.
-{ alsactl monitor "hw:$C0" & p0=$!; alsactl monitor "hw:$C1" & p1=$!; wait -n; kill "$p0" "$p1"; } 2>/dev/null | while read -r line; do
-	case "$line" in *" Jack"*) sleep 0.5; apply ;; esac
+# Jack events from both HDMI cards, and the headphone jack: on unplug pidesktop-headphone-follow restores the output
+# that was in use before, which may be an HDMI port the monitor has left since; re-check after it has acted.
+# If a monitor process exits (a card went away) the pipe ends, the script exits, and systemd restarts it.
+{ alsactl monitor "hw:$C0" & p0=$!; alsactl monitor "hw:$C1" & p1=$!
+  p2=; [ -e /proc/asound/rockchipes8388 ] && { alsactl monitor hw:rockchipes8388 & p2=$!; }
+  wait -n; kill "$p0" "$p1" $p2; } 2>/dev/null | while read -r line; do
+	case "$line" in
+	*"Headphone Jack"*) sleep 1.5; apply ;;
+	*" Jack"*)          sleep 0.5; apply ;;
+	esac
 done

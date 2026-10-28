@@ -755,8 +755,10 @@ for f in /boot/armbianEnv.txt /usr/share/armbian/armbianEnv.txt; do
 	grep -q 'dw_hdmi_qp.frl_update_poll_ms=' "$f" || sed -i '/^extraargs=/ s/$/ dw_hdmi_qp.frl_update_poll_ms=0/' "$f"
 	# Orange Pi 5 Plus: 4K@120 is not proven there yet (kernel 0020 gives its vp0 the same v0pll dclk the 5B needed, but no
 	# 5 Plus has run the 120 Hz tests), so its image keeps HDMI 2.1 modes hidden; a tester adds the argument by hand.
+	# userpatches/bootenv/rk35xx.txt no longer carries the argument (it went to every RK3588 board); this adds it per board.
 	if [[ "$BOARD" == "orangepi5-plus" ]]; then
-		log "$f: rockchipdrm.allow_frl=1 NOT set on the 5 Plus (4K@120 untested there)"
+		sed -i -E '/^extraargs=/ s/ rockchipdrm\.allow_frl=[^ ]*//' "$f"
+		log "$f: rockchipdrm.allow_frl NOT set on the 5 Plus (4K@120 untested there)"
 	else
 		grep -q 'rockchipdrm.allow_frl=' "$f" || sed -i '/^extraargs=/ s/$/ rockchipdrm.allow_frl=1/' "$f"
 	fi

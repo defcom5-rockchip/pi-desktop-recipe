@@ -20,29 +20,29 @@ cycle(){  # record the window so bt-sentinel can tell this power cycle from a us
 # M.2 slot on that lane: there is nothing to attach, so stand down quietly instead of retrying for ever. The marker tells
 # bt-sentinel and bt-revive to stand down too. (The bt_default rfkill exists on the 5 as well: it comes from the device
 # tree, not from the chip, so it cannot be the test.)
-# A 5B whose Wi-Fi link did not train would look the same on PCIe, so the board decides what happens next. The image
-# records it in /etc/armbian-release: on a 5B (the module is soldered) still try Bluetooth (it is UART-attached and does
-# not need the PCIe side); on an Orange Pi 5 or 5 Plus the module is an optional M.2 card, so no Broadcom device means no
-# module and the helpers stand down. The 5 Plus can carry an eMMC module, so eMMC presence cannot tell it from a 5B.
-# With no board recorded, the eMMC is the witness as before (every 5B has one, no 5 does).
+# A 5B whose Wi-Fi link did not train would look the same on PCIe, so the eMMC (every 5B has one, no 5 does) is the
+# second witness: Broadcom gone but eMMC present = a 5B with a module problem → still try Bluetooth (it is UART-attached
+# and does not need the PCIe side). The 5 and 5B run the same image and the same device tree, so neither the image's
+# board record nor the device tree can tell them apart; the hardware can.
+# Orange Pi 5 Plus (RK3588, its own device tree and image): the module is an optional M.2 card and the board can carry
+# an eMMC module, so the eMMC proves nothing there: the running device tree identifies it, and no Broadcom device means
+# no module.
 PCI=${PD_PCI_SYSFS:-/sys/bus/pci/devices}; MMC=${PD_MMC_SYSFS:-/sys/bus/mmc/devices}; ABSENT=/run/pidesktop-bt-absent
-BRD=${PD_BOARD-$(. /etc/armbian-release 2>/dev/null; echo "${BOARD:-}")}
+DTC=${PD_DT_COMPAT:-/proc/device-tree/compatible}
+is_5plus(){ tr '\0' '\n' 2>/dev/null < "$DTC" | grep -qx 'rockchip,rk3588-orangepi-5-plus'; }
 module_present(){ local d; for d in "$PCI"/*; do [ "$(cat "$d/vendor" 2>/dev/null)" = 0x14e4 ] && case "$(cat "$d/class" 2>/dev/null)" in 0x0280*) return 0;; esac; done; return 1; }
 emmc_present(){ local d; for d in "$MMC"/*; do [ "$(cat "$d/type" 2>/dev/null)" = MMC ] && return 0; done; return 1; }
 rm -f "$ABSENT"
 for i in $(seq 1 10); do module_present && break; sleep 1; done
 stand_down(){ echo "$1 — Bluetooth helpers standing down" > "$ABSENT"; log "$(cat "$ABSENT")"; systemctl stop --no-block bt-sentinel.service 2>/dev/null || true; exit 0; }
 if ! module_present; then
-	case "$BRD" in
-	orangepi5b)     log "Broadcom PCIe Wi-Fi/Bluetooth module not found on an Orange Pi 5B (soldered module did not enumerate) — attempting Bluetooth anyway";;
-	orangepi5)      stand_down "no Broadcom PCIe Wi-Fi/Bluetooth module: an Orange Pi 5 without the optional M.2 Wi-Fi/Bluetooth module";;
-	orangepi5-plus) stand_down "no Broadcom PCIe Wi-Fi/Bluetooth module: an Orange Pi 5 Plus without the optional M.2 Wi-Fi/Bluetooth module";;
-	*)	if emmc_present; then
-			log "Broadcom PCIe Wi-Fi/Bluetooth module not found but eMMC present: an Orange Pi 5B whose module did not enumerate — attempting Bluetooth anyway"
-		else
-			stand_down "no Broadcom PCIe Wi-Fi/Bluetooth module and no eMMC: an Orange Pi 5 (no onboard Wi-Fi/Bluetooth)"
-		fi;;
-	esac
+	if is_5plus; then
+		stand_down "no Broadcom PCIe Wi-Fi/Bluetooth module: an Orange Pi 5 Plus without the optional M.2 Wi-Fi/Bluetooth module"
+	elif emmc_present; then
+		log "Broadcom PCIe Wi-Fi/Bluetooth module not found but eMMC present: an Orange Pi 5B whose module did not enumerate — attempting Bluetooth anyway"
+	else
+		stand_down "no Broadcom PCIe Wi-Fi/Bluetooth module and no eMMC: an Orange Pi 5 (no onboard Wi-Fi/Bluetooth)"
+	fi
 fi
 systemctl start --no-block bt-sentinel.service 2>/dev/null || true   # back in service if an earlier boot phase stood it down
 cycle; attach
