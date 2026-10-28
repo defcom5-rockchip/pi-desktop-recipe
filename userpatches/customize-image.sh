@@ -6,6 +6,7 @@
 RELEASE=$1; LINUXFAMILY=$2; BOARD=$3; BUILD_DESKTOP=$4
 OV=/tmp/overlay/pidesktop
 PDV="${PIDESKTOP_VERSION:-$(cat /etc/pi-desktop-release 2>/dev/null)}"; PDV="${PDV:-6.0}"   # set by the config hook pre_customize_image__pidesktop_version
+PDDE=$(cat /etc/pi-desktop-desktop 2>/dev/null); PDDE=${PDDE:-gnome}   # gnome or kde, written by the same hook (PIDESKTOP_DESKTOP)
 GPU="${PIDESKTOP_GPU_STACK:-mali}"
 export DEBIAN_FRONTEND=noninteractive APT_LISTCHANGES_FRONTEND=none
 # dpkg must never stop at a conffile prompt in here (no stdin): keep the installed version of a changed conffile.
@@ -31,6 +32,36 @@ safe_purge() {
 		return 1
 	fi
 	apt-get purge -y -qq "${want[@]}" >/dev/null 2>&1 && log "purged: ${want[*]}" || { warn "purge of [${want[*]}] failed"; return 1; }
+}
+
+# KDE edition look (2026-10-28): our own Plasma look-and-feel package on Breeze Dark (overlay kde/), a "Plaid Pi Dark"
+# colour scheme = Breeze Dark with the Plaid orange (232,80,32) in place of Breeze blue (61,174,233), the Plaid wallpaper
+# as a wallpaper package, Plaid Pi's launchers in the panel, and the same wallpaper on the lock and SDDM screens.
+# Read against Armbian's 26.04 5 Plus KDE image (Plasma 6.6.6): Breeze Dark ships contents/{defaults,layouts,previews},
+# no /etc/xdg KDE files exist, BreezeDark.colors carries the blue 24 times, the SDDM Breeze theme reads theme.conf.user.
+pidesktop_kde_look() {
+	local LF=/usr/share/plasma/look-and-feel BD=/usr/share/plasma/look-and-feel/org.kde.breezedark.desktop
+	local PP=/usr/share/plasma/look-and-feel/org.plaidpi.desktop CS=/usr/share/color-schemes KO="$OV"/kde
+	[[ -d $BD ]] || { warn "KDE look: Breeze Dark look-and-feel missing — Plaid look NOT applied"; return 0; }
+	rm -rf "$PP"; install -d "$PP/contents/layouts"
+	install -m0644 "$KO"/look-and-feel/org.plaidpi.desktop/metadata.json "$PP/metadata.json"
+	install -m0644 "$KO"/look-and-feel/org.plaidpi.desktop/contents/defaults "$PP/contents/defaults"
+	install -m0644 "$KO"/look-and-feel/org.plaidpi.desktop/contents/layouts/org.kde.plasma.desktop-layout.js "$PP/contents/layouts/"
+	[[ -d $BD/contents/previews ]] && cp -r "$BD/contents/previews" "$PP/contents/"
+	if [[ -f $CS/BreezeDark.colors ]]; then
+		sed -e 's/61,174,233/232,80,32/g' -e 's/^Name=.*/Name=Plaid Pi Dark/' -e '/^Name\[/d' "$CS/BreezeDark.colors" > "$CS/PlaidPiDark.colors"
+		chmod 0644 "$CS/PlaidPiDark.colors"
+	else
+		warn "KDE look: BreezeDark.colors missing — the accent stays Breeze blue"
+	fi
+	install -d /usr/share/wallpapers/PlaidPi/contents/images
+	install -m0644 "$KO"/wallpapers/PlaidPi/metadata.json /usr/share/wallpapers/PlaidPi/metadata.json
+	ln -sfn /usr/share/backgrounds/pi-desktop/penguin-drop-plaid-v2-3840x2160.png /usr/share/wallpapers/PlaidPi/contents/images/3840x2160.png
+	install -Dm0644 "$KO"/xdg/kdeglobals /etc/xdg/kdeglobals
+	install -Dm0644 "$KO"/xdg/kscreenlockerrc /etc/xdg/kscreenlockerrc
+	[[ -d /usr/share/sddm/themes/breeze ]] && install -m0644 "$KO"/sddm/theme.conf.user /usr/share/sddm/themes/breeze/theme.conf.user
+	chown -R root:root "$PP" /usr/share/wallpapers/PlaidPi
+	log "KDE look: org.plaidpi.desktop (Breeze Dark + Plaid orange $(grep -c '232,80,32' "$CS/PlaidPiDark.colors" 2>/dev/null) times + wallpaper + panel launchers), lock + SDDM wallpaper"
 }
 
 [[ "$RELEASE" == "resolute" ]] || { warn "customize-image: RELEASE=$RELEASE, this layer is written for resolute — skipping"; exit 0; }
@@ -163,7 +194,7 @@ if [[ "$GPU" == "mali" ]]; then
 			SUBSYSTEM=="drm", KERNEL=="renderD*", TAG+="uaccess"
 			KERNEL=="mali0", GROUP="render", MODE="0660", TAG+="uaccess"
 		R
-		for u in gdm Debian-gdm; do id "$u" >/dev/null 2>&1 && usermod -aG render,video "$u"; done
+		for u in gdm Debian-gdm sddm; do id "$u" >/dev/null 2>&1 && usermod -aG render,video "$u"; done   # sddm: the KDE greeter
 		# glvnd may still pick Mesa's EGL for some clients; publish the Mali ICD alongside so EGL_PLATFORM lookups find it
 		install -d /usr/share/glvnd/egl_vendor.d
 		[[ -f /usr/share/glvnd/egl_vendor.d/00_mali.json ]] || cat > /usr/share/glvnd/egl_vendor.d/00_mali.json <<-'J'
@@ -346,6 +377,7 @@ if [[ -f /usr/share/applications/mpv.desktop ]]; then
 	log "video default: mpv for $(grep -c '=mpv.desktop' /etc/xdg/mimeapps.list) video types"
 fi
 for a in x-www-browser gnome-www-browser; do update-alternatives --set $a "$BRBIN" >/dev/null 2>&1 || true; done
+if [[ $PDDE == gnome ]]; then
 # dock + desktop icons (the 2.0.x-look layout, Chrome first); later dconf files override Armbian's 00-bg
 install -Dm0644 "$OV"/etc/dconf/db/local.d/10-pidesktop-shell /etc/dconf/db/local.d/10-pidesktop-shell
 # 4.5 "Plaid look" (the maintainer's decision, 2026-10-10: the look of the maintainer's own Plaid): the dhruva dock (NarkAgni, GPL-3.0+, upstream
@@ -368,12 +400,17 @@ install -Dm0644 -o root -g root "$OV"/usr/share/pi-desktop/look/README /usr/shar
 install -Dm0755 -o root -g root "$OV"/usr/share/pi-desktop/look/make-plaid-icons.sh /usr/share/pi-desktop/look/make-plaid-icons.sh
 install -Dm0644 -o root -g root "$OV"/etc/dconf/db/local.d/20-pidesktop-plaid-look /etc/dconf/db/local.d/20-pidesktop-plaid-look
 log "look: dhruva $(python3 -c 'import json;print(json.load(open("/usr/share/gnome-shell/extensions/dhruva@narkagni/metadata.json"))["version-name"])') + plaid-panel, Plaid icons ($(find /usr/share/icons/Plaid -name '*.svg' | wc -l) folders)"
-# default wallpaper (set in 10-pidesktop-shell) + listed in Settings > Appearance
-install -Dm0644 "$OV"/backgrounds/penguin-drop-plaid-v2-3840x2160.png /usr/share/backgrounds/pi-desktop/penguin-drop-plaid-v2-3840x2160.png
 install -Dm0644 "$OV"/backgrounds/pi-desktop-wallpapers.xml /usr/share/gnome-background-properties/pi-desktop-wallpapers.xml
+fi
+# default wallpaper (GNOME: set in 10-pidesktop-shell + listed in Settings > Appearance; KDE: the Plasma look below)
+install -Dm0644 "$OV"/backgrounds/penguin-drop-plaid-v2-3840x2160.png /usr/share/backgrounds/pi-desktop/penguin-drop-plaid-v2-3840x2160.png
+[[ $PDDE == kde ]] && pidesktop_kde_look
 # Files: "Open in Terminator" on the right-click menu (Files 50 has no Open in Terminal; Terminator ships no Files
 # integration; Ubuntu has no open-any-terminal package). Small nautilus-python add-on, tested against Files 50 (2026-09-26).
-if apt-get install -y -qq --no-install-recommends python3-nautilus >/dev/null 2>&1; then
+if [[ $PDDE == kde ]]; then
+	install -Dm0644 -o root -g root "$OV"/usr/share/kio/servicemenus/pidesktop-netdrive.desktop /usr/share/kio/servicemenus/pidesktop-netdrive.desktop \
+		&& log "Dolphin: Add as Network Drive on smb:// folders (service menu)" || warn "Dolphin Network Drive service menu missing"
+elif apt-get install -y -qq --no-install-recommends python3-nautilus >/dev/null 2>&1; then
 	install -Dm0644 -o root -g root "$OV"/usr/share/nautilus-python/extensions/pidesktop-open-terminator.py \
 		/usr/share/nautilus-python/extensions/pidesktop-open-terminator.py && log "Files: Open in Terminator add-on"
 	install -Dm0644 -o root -g root "$OV"/usr/share/nautilus-python/extensions/pidesktop-netdrive.py \
@@ -385,26 +422,39 @@ fi
 # 1480x1040 = 147 cols, room for the fastfetch greeting (its info column starts at col 78). Replaces the transparent-black skel config Armbian's desktop base lays
 # down. Skel, not /etc/xdg: a user config always wins over the system one (no merge), and Terminator only reads the first
 # existing $XDG_CONFIG_DIRS entry. Reaches new accounts only.
-install -Dm0644 -o root -g root "$OV"/etc/skel/.config/terminator/config /etc/skel/.config/terminator/config && log "terminator: Plaid config in /etc/skel"
+[[ $PDDE == gnome ]] && { install -Dm0644 -o root -g root "$OV"/etc/skel/.config/terminator/config /etc/skel/.config/terminator/config && log "terminator: Plaid config in /etc/skel"; }
 # Session killed by systemd-oomd during a big copy (2026-09-26): Nautilus is D-Bus activated without a systemd unit,
 # so it ran inside the session bus's cgroup (dbus.service); the copy's page cache was charged there and oomd killed
 # dbus.service -> whole GNOME session gone (systemd#35270, LP#2075104; systemd leaves the grouping to the distro).
 # Fix: Files in its own user unit (via a /usr/local D-Bus override, searched before /usr/share) + a cap on unwritten
 # data so NAS -> SD-card copies can't pile up gigabytes of dirty pages. oomd's own policy (50%/20 s) stays as shipped.
+if [[ $PDDE == gnome ]]; then
 install -Dm0644 -o root -g root "$OV"/etc/systemd/user/org.gnome.Nautilus.service /etc/systemd/user/org.gnome.Nautilus.service
 install -Dm0644 -o root -g root "$OV"/usr/local/share/dbus-1/services/org.gnome.Nautilus.service /usr/local/share/dbus-1/services/org.gnome.Nautilus.service
+fi
 install -Dm0644 -o root -g root "$OV"/etc/sysctl.d/60-pidesktop-writeback.conf /etc/sysctl.d/60-pidesktop-writeback.conf
 log "session safety: Nautilus in its own user unit (oomd can't hit the session bus) + writeback cap (dirty 256M/64M)"
 # Quick how-to on every new desktop (user, 2026-09-26): getting Chrome (first-run installer) + display scaling at 4K@120.
-install -Dm0644 -o root -g root "$OV/etc/skel/Desktop/Plaid Pi How-To.txt" "/etc/skel/Desktop/Plaid Pi How-To.txt" && log "desktop: Plaid Pi How-To.txt in /etc/skel/Desktop"
+if [[ $PDDE == kde ]]; then HOWTO="$OV/kde/Plaid Pi How-To.txt"; else HOWTO="$OV/etc/skel/Desktop/Plaid Pi How-To.txt"; fi
+install -Dm0644 -o root -g root "$HOWTO" "/etc/skel/Desktop/Plaid Pi How-To.txt" && log "desktop: Plaid Pi How-To.txt ($PDDE) in /etc/skel/Desktop"
 # suspend: masked + GNOME auto-suspend off (2.0.x hook 60 rule; carry-forward miss found on test2 first boot 2026-09-24).
 # Resume on the vendor kernel is not validated on Plaid (the stmmac fix is in, the sleep DT config is not). Blanking stays.
 for t in sleep suspend hibernate hybrid-sleep; do systemctl mask "$t.target" >/dev/null 2>&1; done
-install -Dm0644 "$OV"/etc/dconf/db/local.d/05-pidesktop-power /etc/dconf/db/local.d/05-pidesktop-power
+[[ $PDDE == gnome ]] && install -Dm0644 "$OV"/etc/dconf/db/local.d/05-pidesktop-power /etc/dconf/db/local.d/05-pidesktop-power
 # login screen at every boot after first-run setup (Armbian's own autologin off-switch never fires)
 install -Dm0644 "$OV"/etc/systemd/system/pidesktop-login-screen.service /etc/systemd/system/pidesktop-login-screen.service
 systemctl enable pidesktop-login-screen.service >/dev/null 2>&1 && log "login screen: autologin removed after first-run setup" || warn "login-screen service enable failed"
+if [[ $PDDE == kde ]]; then   # the same for SDDM: armbian-firstlogin writes /etc/sddm.conf.d/autologin.conf
+	install -Dm0644 "$OV"/etc/systemd/system/pidesktop-login-screen-sddm.service /etc/systemd/system/pidesktop-login-screen-sddm.service
+	systemctl enable pidesktop-login-screen-sddm.service >/dev/null 2>&1 && log "login screen (SDDM): autologin removed after first-run setup" || warn "login-screen-sddm enable failed"
+fi
 # ---------------------------------------------------------------- screensaver instead of screen blank
+if [[ $PDDE == kde ]]; then
+	# GNOME's screen blank was locked off for the 120 Hz re-light hang (GNOME's blank path); the screensaver service drives
+	# Mutter's D-Bus API. Plasma keeps its own power management and blanking: the 5 Plus image runs at 60 Hz (no FRL),
+	# and a 5B KDE test image at 120 Hz is where blank/unblank on KWin gets tested (kernel 0010/0011 guard that path).
+	log "screen blank: Plasma power management (no Plaid screensaver service, no patched gnome-control-center on KDE)"
+else
 # The display does not come back after a blank at 4K@120 Hz (board hard-hangs on the monitor's standby hotplug,
 # 2026-09-24). GNOME's screen blank is locked off; a per-user service shows a screensaver (picture/slideshow/video
 # from ~/Pictures/screensaver via mpv) after its own delay and holds an idle inhibitor while it shows and while the
@@ -432,7 +482,8 @@ else
 fi
 # the Google Chrome dock icon stays: its launcher is the first-run installer (pidesktop-chrome)
 dconf update 2>/dev/null || true
-log "default browser: $BR (xdg + alternatives); dock layout 10-pidesktop-shell"
+fi
+log "default browser: $BR (xdg + alternatives); $([[ $PDDE == gnome ]] && echo 'dock layout 10-pidesktop-shell' || echo 'Plasma panel launchers')"
 
 # ---------------------------------------------------------------- music: Rhythmbox 3.5.1 (Pi-Desktop's build, approved 2026-09-26)
 # Newest upstream (Ubuntu has 3.4.9), all 13 meson features on, dark by default (one patch: prefer-dark-theme in
@@ -466,7 +517,11 @@ apt-get install -y -qq --no-install-recommends brasero brasero-cdrkit cdrdao >/d
 
 # ---------------------------------------------------------------- desktop extras
 # no zram-tools: Armbian zram-config already sets up /dev/zram0 swap; both at once = zramswap.service fails every boot
-apt-get install -y -qq --no-install-recommends gnome-system-monitor iw fastfetch dconf-cli gnome-tweaks >/dev/null 2>&1 || warn "desktop extras install had errors"
+if [[ $PDDE == kde ]]; then
+	apt-get install -y -qq --no-install-recommends plasma-systemmonitor iw fastfetch >/dev/null 2>&1 || warn "desktop extras install had errors"
+else
+	apt-get install -y -qq --no-install-recommends gnome-system-monitor iw fastfetch dconf-cli gnome-tweaks >/dev/null 2>&1 || warn "desktop extras install had errors"
+fi
 # Killswitch (Pi-Desktop's, GPL-3.0-or-later; shipped from 4.5, 2026-10-10): lists mounts, flags the stale (hung)
 # network ones and detaches exactly that mount (one umount -f -l via pkexec, so an automount trigger underneath stays;
 # GVfs mounts via gio). Never offers the system's own filesystems or the user's home. GTK4 + libadwaita (both in the
@@ -537,6 +592,15 @@ if [[ -f $_fl ]] && grep -q 'AutomaticLoginEnable = true' "$_fl"; then
 else
 	warn "first login: no 'AutomaticLoginEnable = true' in armbian-firstlogin — check it does not enable autologin another way"
 fi
+# The SDDM branch of the same script writes /etc/sddm.conf.d/autologin.conf for the first session: send that heredoc
+# to /dev/null instead, so a KDE image shows SDDM's login screen too (pidesktop-login-screen-sddm.service is the
+# boot-time safety net). Harmless on GNOME, where that branch never runs.
+if [[ -f $_fl ]] && grep -q 'cat <<- EOF > /etc/sddm.conf.d/autologin.conf' "$_fl"; then
+	sed -i 's#cat <<- EOF > /etc/sddm.conf.d/autologin.conf#cat <<- EOF > /dev/null   \# Plaid Pi: no SDDM autologin#' "$_fl"
+	bash -n "$_fl" && log "first login: SDDM autologin stays off" || warn "first login: SDDM autologin edit broke armbian-firstlogin"
+elif [[ $PDDE == kde ]]; then
+	warn "first login: SDDM autologin line not found in armbian-firstlogin — check how it enables autologin now"
+fi
 printf 'Plaid Pi %s (Linux \\r) — \\l\n\n' "$PDV" > /etc/issue
 apt-get purge -y -qq armbian-zsh armbian-config armbian-plymouth-theme 2>/dev/null || true   # keep armbian-bsp-cli-* (boot scripts, firstlogin) + armbian-firmware
 for f in /etc/update-motd.d/*armbian*; do [[ -f $f ]] && chmod -x "$f"; done
@@ -579,14 +643,20 @@ safe_purge armbian-imager || true
 # GNOME Software goes (the maintainer's decision, 2026-10-10, as on the maintainer's own Plaid): Pro Updates is the update window, the daily apt job
 # installs security updates, first-click installers and apt add apps. It also stops GNOME Software's background update
 # downloads (PRIVACY.md). Nothing else depends on it (gnome-control-center lists it only as an alternative).
+if [[ $PDDE == kde ]]; then   # same decision for KDE's store: Discover (and its PackageKit/Flatpak/fwupd/snap backends)
+	_dp=$(dpkg-query -W -f='${db:Status-Abbrev} ${Package}\n' 'plasma-discover*' 2>/dev/null | awk '$1 ~ /^.i/ {print $2}' | xargs)
+	[[ -n $_dp ]] && { safe_purge $_dp || true; }
+	log "KDE: Discover removed [${_dp:-not installed}]"
+else
 safe_purge gnome-software gnome-software-common gnome-software-plugin-deb gnome-software-plugin-flatpak \
 	gnome-software-plugin-fwupd gnome-software-plugin-snap || true
+fi
 # flatpak stays (Pro Updates offers Flathub apps per user): mark it manual, or the next `apt autoremove` would take it.
 # libflatpak0 was only there for GNOME Software's Flatpak plugin (the flatpak command does not use it).
 dpkg -s flatpak >/dev/null 2>&1 && apt-mark manual flatpak >/dev/null
 safe_purge libflatpak0 || true
 log "after the GNOME Software purge, apt autoremove would remove: [$(apt-get -s autoremove 2>/dev/null | awk '/^Remv /{print $2}' | xargs)]"
-for x in /usr/share/gnome-background-properties/*ubuntu*.xml /usr/share/gnome-background-properties/*resolute*.xml; do
+[[ $PDDE == gnome ]] && for x in /usr/share/gnome-background-properties/*ubuntu*.xml /usr/share/gnome-background-properties/*resolute*.xml; do
 	[[ -f $x ]] && dpkg-divert --quiet --add --rename --divert "$x.pidesktop-hidden" "$x"
 done
 log "branding: Ubuntu wallpapers hidden from the chooser ($(ls /usr/share/gnome-background-properties/*.pidesktop-hidden 2>/dev/null | wc -l) lists diverted); ubuntu-docs kept for GNOME Help"
@@ -658,9 +728,13 @@ case "$BOARD" in   # the copyright summary names the board the image is for
 	orangepi5)      sed -i 's/an image for the Orange Pi 5B built/an image for the Orange Pi 5 built/' /usr/share/doc/pi-desktop/copyright;;
 	orangepi5-plus) sed -i 's/an image for the Orange Pi 5B built/an image for the Orange Pi 5 Plus built/' /usr/share/doc/pi-desktop/copyright;;
 esac
+if [[ $PDDE == kde ]]; then   # the notice must list what a KDE image contains (no Dhruva, Plaid icons, gcc patch, screensaver)
+	python3 "$OV"/kde/copyright-kde.py /usr/share/doc/pi-desktop/copyright && log "copyright: KDE edition notice" || warn "copyright: KDE edit FAILED — the notice still describes the GNOME edition"
+fi
+if [[ $PDDE == kde ]]; then DEL="KDE Plasma $(dpkg-query -W -f='${Version}' plasma-workspace 2>/dev/null | sed -E 's/^[0-9]+://; s/-.*//')"; else DEL="GNOME 50"; fi
 cat > /etc/update-motd.d/05-pi-desktop <<-M
 	#!/bin/sh
-	printf '\\n  Plaid Pi ${PDV}  ·  built from Ubuntu 26.04 packages  ·  GNOME 50  ·  kernel %s\\n\\n' "\$(uname -r)"
+	printf '\\n  Plaid Pi ${PDV}  ·  built from Ubuntu 26.04 packages  ·  ${DEL}  ·  kernel %s\\n\\n' "\$(uname -r)"
 M
 chmod +x /etc/update-motd.d/05-pi-desktop
 
@@ -794,7 +868,9 @@ log "journald: persistent (200 MB)"
 # (The first version of this guard sat after the script's exit 0 and never ran; bake #4 of 2026-10-03 shipped without
 # GNOME's Help content because of a purge this guard would not have caught either. Belt and braces: it runs here.)
 MISSING=""
-for p in gnome-shell gdm3 libmutter-18-0 mutter-common gnome-session-bin gnome-control-center nautilus chromium pipewire wireplumber fonts-adwaita gnome-user-docs yelp; do
+if [[ $PDDE == kde ]]; then CORE="plasma-workspace plasma-desktop kwin-wayland sddm systemsettings dolphin konsole chromium pipewire wireplumber"
+else CORE="gnome-shell gdm3 libmutter-18-0 mutter-common gnome-session-bin gnome-control-center nautilus chromium pipewire wireplumber fonts-adwaita gnome-user-docs yelp"; fi
+for p in $CORE; do
 	dpkg -s "$p" >/dev/null 2>&1 || MISSING="$MISSING $p"
 done
 if [[ -n $MISSING ]]; then
@@ -805,9 +881,9 @@ log "final guard: core desktop packages present"
 
 # ---------------------------------------------------------------- manifest
 {
-	echo "Plaid Pi ${PDV} — built $(date -u +%F' '%T) UTC — BOARD=$BOARD RELEASE=$RELEASE FAMILY=$LINUXFAMILY GPU=$GPU"
+	echo "Plaid Pi ${PDV} — built $(date -u +%F' '%T) UTC — BOARD=$BOARD DESKTOP=$PDDE RELEASE=$RELEASE FAMILY=$LINUXFAMILY GPU=$GPU"
 	echo; echo "## key packages"
-	dpkg-query -W -f='${Package} ${Version}\n' 'linux-image-*' 'linux-dtb-*' 'linux-u-boot-*' gnome-shell mutter gdm3 mesa-vulkan-drivers libegl-mesa0 'libmali-*' \
+	dpkg-query -W -f='${Package} ${Version}\n' 'linux-image-*' 'linux-dtb-*' 'linux-u-boot-*' gnome-shell mutter gdm3 plasma-workspace kwin-wayland sddm mesa-vulkan-drivers libegl-mesa0 'libmali-*' \
 		pipewire wireplumber librockchip-mpp1 librockchip-mpp-dev librockchip-vpu1 librga2 rockchip-vaapi libva2 mpv ffmpeg chromium firefox linux-firmware bluez alsa-ucm-conf 2>/dev/null | sort
 	echo; echo "## held"; apt-mark showhold
 	echo; echo "## pulseaudio present?"; dpkg -l 'pulseaudio*' 2>/dev/null | grep '^ii' || echo none

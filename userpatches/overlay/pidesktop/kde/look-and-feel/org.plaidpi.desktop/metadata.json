@@ -1,0 +1,15 @@
+{
+    "KPackageStructure": "Plasma/LookAndFeel",
+    "KPlugin": {
+        "Authors": [
+            { "Name": "defcom5-rockchip (Plaid Pi)" },
+            { "Email": "plasma-devel@kde.org", "Name": "KDE Visual Design Group (Breeze Dark, which this is based on)" }
+        ],
+        "Category": "",
+        "Description": "Plaid Pi: Breeze Dark with the Plaid orange accent, the Plaid wallpaper and Plaid Pi's panel launchers",
+        "Id": "org.plaidpi.desktop",
+        "License": "GPL-2.0-or-later",
+        "Name": "Plaid Pi",
+        "Website": "https://defcom5-rockchip.github.io/pi-desktop/"
+    }
+}

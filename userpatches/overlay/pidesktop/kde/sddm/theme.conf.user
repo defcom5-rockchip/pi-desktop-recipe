@@ -1,0 +1,5 @@
+# Plaid Pi (KDE edition): the Plaid wallpaper and orange accent on the SDDM login screen (overrides theme.conf)
+[General]
+type=image
+background=/usr/share/backgrounds/pi-desktop/penguin-drop-plaid-v2-3840x2160.png
+color=#e85020

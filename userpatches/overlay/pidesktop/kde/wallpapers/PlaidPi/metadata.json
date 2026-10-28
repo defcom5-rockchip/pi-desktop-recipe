@@ -1,0 +1,8 @@
+{
+    "KPlugin": {
+        "Authors": [ { "Name": "defcom5-rockchip (Plaid Pi)" } ],
+        "Id": "PlaidPi",
+        "License": "CC-BY-SA-4.0",
+        "Name": "Plaid Penguin Drop"
+    }
+}

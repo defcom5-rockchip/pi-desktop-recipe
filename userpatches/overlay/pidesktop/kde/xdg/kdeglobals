@@ -1,0 +1,11 @@
+# Plaid Pi (KDE edition): system defaults for new users. The look-and-feel package carries the full set; these keys
+# make the colours and icons right from the first login, before anything has applied the package.
+[KDE]
+LookAndFeelPackage=org.plaidpi.desktop
+widgetStyle=Breeze
+
+[General]
+ColorScheme=PlaidPiDark
+
+[Icons]
+Theme=breeze-dark

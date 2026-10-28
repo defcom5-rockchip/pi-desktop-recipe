@@ -1,0 +1,3 @@
+# Plaid Pi (KDE edition): the Plaid wallpaper on the lock screen
+[Greeter][Wallpaper][org.kde.image][General]
+Image=file:///usr/share/wallpapers/PlaidPi/contents/images/3840x2160.png

@@ -1,0 +1,71 @@
+Plaid Pi 6.0 - Quick How-To
+===========================
+
+
+1. Getting Google Chrome
+------------------------
+Chromium is ready to use. Google Chrome isn't included, because Google's licence
+doesn't allow it to be passed on, but it's a couple of clicks away:
+
+  1. Click "Google Chrome" in the panel at the bottom of the screen.
+  2. Choose "Install". Chrome is downloaded straight from Google (about 120 MB).
+  3. Type your password when asked.
+  4. Choose "Make Default" if you want Chrome as your web browser.
+
+Chrome then updates together with the rest of your software, and Plaid Pi
+starts it with hardware video decoding switched on.
+
+Installing Chrome also brings Widevine, the module streaming services use for
+protected video. Chrome plays it right away; Chromium and Firefox pick it up the
+next time you start them (Plaid Pi points them at Chrome's copy; nothing is
+copied), so keep Chrome installed. Linux gets Widevine's software level: the
+video is decoded by the processor, and each service picks the quality.
+
+
+2. Firefox, LibreOffice, GIMP, Inkscape, Thunderbird and VSCodium
+-----------------------------------------------------------------
+These six are in the Application Launcher (the button at the bottom left, or
+press the Super key and type the name), and Firefox is in the panel too, but
+they download on the first click, so the Plaid Pi image stays small:
+
+  1. Click the app. Choose "Install" and type your password when asked.
+  2. Wait for the download: LibreOffice about 120 MB, VSCodium about 160 MB,
+     Firefox about 90 MB, Thunderbird about 75 MB, GIMP and Inkscape about 30 MB.
+  3. The app opens by itself, and from then on it starts like any other app.
+
+Chromium, Chrome, Firefox and mpv, the video player, are set up to use the
+board's video engine for H.264, VP9 and AV1. LibreOffice comes as Writer, Calc,
+Impress, Draw and Math; the database module isn't included because it needs
+Java ("sudo apt install libreoffice-base" adds it). VSCodium is the community
+build of VS Code with Microsoft's telemetry removed. Everything updates through
+Pro Updates (and the daily security updates install by themselves).
+
+
+3. Screen size and refresh rate
+-------------------------------
+System Settings > Display & Monitor
+
+Scale sets how big everything looks; Refresh Rate is on the same page. You can
+change both at any time.
+
+
+4. Films and music on a NAS (network drive)
+-------------------------------------------
+Videos opened straight from a network location (smb://...) are read a little
+at a time, so a film can skip for a moment when the NAS pauses. Add the share
+as a network drive instead: the system then reads well ahead for every program.
+
+  1. Open "Network Drive" from the Application Launcher (type its name) and
+     type the server and the share. Or, in Dolphin, open the share
+     (type smb:// and the NAS name in the address bar) and right-click an empty
+     spot inside it > "Add as Network Drive".
+  2. Type your user name and password for the NAS (leave both empty if the
+     share is open to guests) and choose "Add Drive".
+  3. Type your own password when asked.
+
+The drive is then under /mnt/ for every program; open films from there, not
+from the smb:// location. It connects by itself when you open it. mpv keeps
+the most ahead. To remove a drive, open "Network Drive", click the bin next to
+it, then "Remove".
+
+More help: https://github.com/defcom5-rockchip/pi-desktop

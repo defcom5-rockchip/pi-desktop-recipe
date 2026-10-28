@@ -1,0 +1,15 @@
+[Unit]
+Description=Plaid Pi: login screen at every boot on SDDM (undo the Armbian first-run autologin)
+# armbian-firstlogin writes /etc/sddm.conf.d/autologin.conf for the first session (customize-image.sh redirects that
+# write; this is the safety net if a newer armbian-firstlogin writes it another way).
+# Runs once setup is finished (marker gone), before the display manager starts.
+ConditionPathExists=!/root/.not_logged_in_yet
+ConditionPathExists=/etc/sddm.conf.d/autologin.conf
+Before=display-manager.service sddm.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/rm -f /etc/sddm.conf.d/autologin.conf
+
+[Install]
+WantedBy=graphical.target
