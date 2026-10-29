@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Chromium
+GenericName=Web Browser
+Comment=Chromium with hardware video decode. Downloads on first use.
+Exec=/usr/local/bin/pidesktop-get chromium %U
+Icon=internet-web-browser
+Terminal=false
+Categories=Network;WebBrowser;
+MimeType=text/html;text/xml;application/xhtml+xml;x-scheme-handler/http;x-scheme-handler/https;
+Keywords=chromium;browser;web;internet;
+StartupNotify=true

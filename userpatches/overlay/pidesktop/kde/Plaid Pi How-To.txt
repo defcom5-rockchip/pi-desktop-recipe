@@ -4,8 +4,8 @@ Plaid Pi 6.0 - Quick How-To
 
 1. Getting Google Chrome
 ------------------------
-Chromium is ready to use. Google Chrome isn't included, because Google's licence
-doesn't allow it to be passed on, but it's a couple of clicks away:
+Google Chrome isn't included, because Google's licence doesn't allow it to be
+passed on, but it's a couple of clicks away:
 
   1. Click "Google Chrome" in the panel at the bottom of the screen.
   2. Choose "Install". Chrome is downloaded straight from Google (about 120 MB).
@@ -22,16 +22,21 @@ copied), so keep Chrome installed. Linux gets Widevine's software level: the
 video is decoded by the processor, and each service picks the quality.
 
 
-2. Firefox, LibreOffice, GIMP, Inkscape, Thunderbird and VSCodium
------------------------------------------------------------------
-These six are in the Application Launcher (the button at the bottom left, or
-press the Super key and type the name), and Firefox is in the panel too, but
-they download on the first click, so the Plaid Pi image stays small:
+2. Chromium, Firefox, LibreOffice, GIMP, Inkscape, Thunderbird and VSCodium
+---------------------------------------------------------------------------
+These seven are in the Application Launcher (the button at the bottom left, or
+press the Super key and type the name), and Chromium and Firefox are in the
+panel too, but they download on the first click, so the Plaid Pi image stays
+small:
 
   1. Click the app. Choose "Install" and type your password when asked.
-  2. Wait for the download: LibreOffice about 120 MB, VSCodium about 160 MB,
-     Firefox about 90 MB, Thunderbird about 75 MB, GIMP and Inkscape about 30 MB.
+  2. Wait for the download: VSCodium about 160 MB, Chromium about 130 MB,
+     LibreOffice about 120 MB, Firefox about 90 MB, Thunderbird about 75 MB,
+     GIMP and Inkscape about 30 MB.
   3. The app opens by itself, and from then on it starts like any other app.
+
+Chromium is the web browser for links you open in other apps: the first link
+offers to install it, and if you install Chrome instead, choose "Make Default".
 
 Chromium, Chrome, Firefox and mpv, the video player, are set up to use the
 board's video engine for H.264, VP9 and AV1. LibreOffice comes as Writer, Calc,

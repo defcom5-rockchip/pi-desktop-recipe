@@ -9,8 +9,10 @@
 # Firefox gets Pi-Desktop's board-specific pieces applied after the install (a launcher that gives it the Mali GL library,
 # VA-API prefs, a neutral policy file): Mozilla's policy allows only unaltered copies to be distributed, so the
 # alteration happens here, on the user's machine, at the user's request.
+# Chromium (KDE edition only; the GNOME image ships it) gets back Armbian's neutral master_preferences, which the GNOME
+# image keeps and the KDE build staged before taking Chromium out.
 #
-# Usage: pidesktop-install-app <libreoffice|gimp|inkscape|thunderbird|vscodium|firefox>
+# Usage: pidesktop-install-app <libreoffice|gimp|inkscape|thunderbird|vscodium|firefox|chromium>
 #        pidesktop-install-app --check-key        (no root: fetch VSCodium's key and compare it with the pinned fingerprint)
 set -euo pipefail
 LOG=/var/log/pidesktop-install-app.log
@@ -57,7 +59,15 @@ firefox_apply_pidesktop_pieces() {
 	install -Dm0644 "$STAGE/policies.json" /etc/firefox/policies/policies.json
 }
 
+chromium_apply_pidesktop_pieces() {
+	local MP=/usr/share/pi-desktop/chromium/master_preferences
+	[[ -f $MP ]] || return 0
+	echo "Applying Plaid Pi's Chromium first-run preferences"
+	install -m0644 "$MP" /etc/chromium/master_preferences
+}
+
 APP=${1:-}
+APT_REC=()
 case $APP in
 	libreoffice) PKGS="libreoffice-writer libreoffice-calc libreoffice-impress libreoffice-draw libreoffice-math libreoffice-gtk3 libreoffice-gnome"
 	             BIN=/usr/bin/libreoffice;  DESKTOP=libreoffice-startcenter.desktop ;;   # no -base: it drags in a 234 MB Java runtime
@@ -66,14 +76,20 @@ case $APP in
 	thunderbird) PKGS=thunderbird; BIN=/usr/bin/thunderbird; DESKTOP=thunderbird.desktop ;;
 	vscodium)    PKGS=codium;      BIN=/usr/bin/codium;      DESKTOP=codium.desktop ;;
 	firefox)     PKGS=firefox;     BIN=/usr/bin/firefox;     DESKTOP=firefox.desktop ;;
+	chromium)    PKGS="chromium chromium-sandbox"; BIN=/usr/bin/chromium; DESKTOP=chromium.desktop
+	             APT_REC=(--no-install-recommends) ;;   # as the GNOME image installs it: no GNOME notification daemon or printer tool
 	--check-key) fetch_vscodium_key "$(mktemp)"; exit $? ;;
-	*)           echo "usage: pidesktop-install-app <libreoffice|gimp|inkscape|thunderbird|vscodium|firefox>" >&2; exit 2 ;;
+	*)           echo "usage: pidesktop-install-app <libreoffice|gimp|inkscape|thunderbird|vscodium|firefox|chromium>" >&2; exit 2 ;;
 esac
 
 [[ $EUID -eq 0 ]] || { echo "must run as root" >&2; exit 1; }
 exec 9>/run/lock/pidesktop-install-app.lock
 flock -n 9 || { echo "another install is already running" >&2; exit 3; }
 APT_LOCK=(-o DPkg::Lock::Timeout=600)
+# dpkg has no terminal here: a conffile question would fail the install and leave the package unconfigured (the
+# 2026-10-18 bake). Armbian's branding drops files for apps that are not installed yet (/etc/chromium, /etc/thunderbird),
+# so keep the file on disk, as the image build does.
+APT_CONF=(-o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold)
 exec > >(tee -a "$LOG") 2>&1
 echo "== $(date '+%F %T') installing $APP ($PKGS)"
 # First boot: apt-daily refreshes the package lists and the daily security updates install right after login, holding
@@ -109,10 +125,11 @@ if [[ ! -x $BIN ]]; then
 	echo "Updating package lists"
 	apt-get "${APT_LOCK[@]}" update -q
 	echo "Downloading and installing $APP"
-	apt-get "${APT_LOCK[@]}" install -y -q $PKGS
+	apt-get "${APT_LOCK[@]}" "${APT_CONF[@]}" install -y -q "${APT_REC[@]}" $PKGS
 fi
 [[ -x $BIN ]] || { echo "E: $APP is not installed after apt finished"; exit 1; }
 [[ $APP == firefox ]] && firefox_apply_pidesktop_pieces
+[[ $APP == chromium ]] && chromium_apply_pidesktop_pieces
 
 # the placeholder made way for the real menu entry
 if [[ -f $SHADOW/$DESKTOP ]]; then

@@ -292,7 +292,20 @@ rm -f /etc/apt/preferences.d/armbian-desktops /etc/apt/preferences.d/pidesktop-b
 install -Dm0644 -o root -g root "$OV"/usr/share/pi-desktop/apt/00-pidesktop-browsers /usr/share/pi-desktop/apt/00-pidesktop-browsers
 install -m0644 -o root -g root /usr/share/pi-desktop/apt/00-pidesktop-browsers /etc/apt/preferences.d/00-pidesktop-browsers
 apt-get update -qq
+if [[ $PDDE == kde ]]; then
+	# KDE edition (G-Man, 2026-10-29: "browsers can be user install launchers"): Chromium installs on first click like
+	# Firefox (pidesktop-get chromium: about 130 MB download, 380 MB installed). The KDE desktop list brings Armbian's
+	# copy, so it goes again. The purge also deletes Armbian's neutral master_preferences (written over the package's
+	# conffile by the branding); stage it for the installer, so Chromium starts as on the GNOME image.
+	if grep -q skip_first_run_ui /etc/chromium/master_preferences 2>/dev/null; then
+		install -Dm0644 /etc/chromium/master_preferences /usr/share/pi-desktop/chromium/master_preferences
+	else
+		warn "chromium: Armbian's master_preferences not found; a first-click Chromium keeps the package's"
+	fi
+	safe_purge chromium chromium-common chromium-sandbox && log "browsers: Chromium removed (first-click installer on KDE)" || warn "chromium purge refused"
+else
 apt-get install -y -qq --no-install-recommends chromium chromium-sandbox >/dev/null && log "browsers: chromium $(dpkg-query -W -f='${Version}' chromium)" || warn "chromium install had errors"
+fi
 # Firefox is NOT in the image (4.0, 2026-10-03): Mozilla's distribution policy allows unaltered copies only, and ours carries a
 # launcher, prefs and a policy file. It is a first-click installer instead (pidesktop-get firefox): the Mozilla Team build
 # from the PPA pinned above, with the Mali/VA-API pieces below applied on the user's own machine. Purge any copy a tier left.
@@ -332,6 +345,9 @@ log "firefox: $( [[ -f /usr/local/lib/pidesktop-firefox-mali/libpidesktop-ffmali
 install -Dm0755 -o root -g root "$OV"/usr/local/bin/pidesktop-chrome /usr/local/bin/pidesktop-chrome
 install -Dm0755 -o root -g root "$OV"/usr/local/sbin/pidesktop-install-chrome /usr/local/sbin/pidesktop-install-chrome
 install -Dm0644 -o root -g root "$OV"/usr/local/share/applications/google-chrome.desktop /usr/local/share/applications/google-chrome.desktop
+# KDE's Breeze theme has no "web-browser" icon (the launcher would show a blank one); pidesktop-install-chrome swaps either
+# for Chrome's own icon after the install
+[[ $PDDE == kde ]] && sed -i 's/^Icon=web-browser$/Icon=applications-internet/' /usr/local/share/applications/google-chrome.desktop
 install -Dm0644 -o root -g root "$OV"/usr/share/polkit-1/actions/org.pidesktop.install-chrome.policy /usr/share/polkit-1/actions/org.pidesktop.install-chrome.policy
 dpkg -s google-chrome-stable >/dev/null 2>&1 && warn "google-chrome-stable is installed in the image — it must not be shipped" || log "chrome: not shipped; first-run installer launcher in place"
 
@@ -349,12 +365,15 @@ install -Dm0644 -o root -g root "$OV"/usr/share/polkit-1/actions/org.pidesktop.i
 for d in libreoffice-startcenter gimp org.inkscape.Inkscape thunderbird codium firefox; do
 	install -Dm0644 -o root -g root "$OV"/usr/local/share/applications/$d.desktop /usr/local/share/applications/$d.desktop
 done
+# KDE: Chromium's placeholder (same desktop id, so the panel launcher and the default-browser entry keep working after the
+# install removes it). Breeze's generic browser icon until then: the image carries no browser artwork.
+[[ $PDDE == kde ]] && install -Dm0644 -o root -g root "$OV"/kde/chromium.desktop /usr/local/share/applications/chromium.desktop
 install -d /usr/share/icons/hicolor/scalable/apps
 install -m0644 -o root -g root "$OV"/usr/share/icons/hicolor/scalable/apps/pidesktop-get-*.svg -t /usr/share/icons/hicolor/scalable/apps/
 gtk-update-icon-cache -q -f /usr/share/icons/hicolor 2>/dev/null || true
 # nothing from the full tier may ride along (a stale staging dir or a yaml change would bring it back silently)
 FULLP=$(dpkg-query -W -f='${db:Status-Abbrev} ${Package}\n' libreoffice-core libreoffice-common gimp inkscape thunderbird code 2>/dev/null | awk '$1 ~ /^[ih]i/ {print $2}')
-if [[ -n $FULLP ]]; then warn "full-tier apps present in a mid-tier image: $FULLP"; else log "apps: mid tier; LibreOffice, GIMP, Inkscape, Thunderbird, VSCodium and Firefox install on first click"; fi
+if [[ -n $FULLP ]]; then warn "full-tier apps present in a mid-tier image: $FULLP"; else log "apps: mid tier; LibreOffice, GIMP, Inkscape, Thunderbird, VSCodium, Firefox$([[ $PDDE == kde ]] && echo ', Chromium') install on first click"; fi
 # Audacity stays in the image: small, and this is an audio box. The mid tier doesn't carry it.
 apt-get install -y -qq audacity >/dev/null 2>&1 && log "audacity: $(dpkg-query -W -f='${Version}' audacity)" || warn "audacity install failed"
 dpkg -s snapd >/dev/null 2>&1 && warn "snapd present (installed: $(dpkg-query -W -f='${Version}' snapd))"   # snap list needs a running snapd, none runs in the chroot
@@ -363,6 +382,7 @@ dpkg -s snapd >/dev/null 2>&1 && warn "snapd present (installed: $(dpkg-query -W
 # launcher offers "make default" after the user installs it). The Google Chrome branch below only applies to a local image
 # where Chrome was installed by hand.
 # Chrome/Chromium are flicker-free on the blob; Firefox installs on first click (hardware video through libpidesktop-ffmali).
+# KDE: chromium.desktop is the first-click placeholder; Chromium's postinst registers the alternatives when it installs.
 if [[ -x /usr/bin/google-chrome-stable ]]; then BR=google-chrome.desktop; BRBIN=/usr/bin/google-chrome-stable; else BR=chromium.desktop; BRBIN=/usr/bin/chromium; fi
 install -d /etc/xdg
 cat > /etc/xdg/mimeapps.list <<-M
@@ -900,7 +920,7 @@ log "journald: persistent (200 MB)"
 # (The first version of this guard sat after the script's exit 0 and never ran; bake #4 of 2026-10-03 shipped without
 # GNOME's Help content because of a purge this guard would not have caught either. Belt and braces: it runs here.)
 MISSING=""
-if [[ $PDDE == kde ]]; then CORE="plasma-workspace plasma-desktop kwin-wayland sddm systemsettings dolphin konsole okular plasma-pa zenity chromium pipewire wireplumber"
+if [[ $PDDE == kde ]]; then CORE="plasma-workspace plasma-desktop kwin-wayland sddm systemsettings dolphin konsole okular plasma-pa zenity pipewire wireplumber"
 else CORE="gnome-shell gdm3 libmutter-18-0 mutter-common gnome-session-bin gnome-control-center nautilus chromium pipewire wireplumber fonts-adwaita gnome-user-docs yelp"; fi
 for p in $CORE; do
 	dpkg -s "$p" >/dev/null 2>&1 || MISSING="$MISSING $p"

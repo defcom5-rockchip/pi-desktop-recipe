@@ -63,7 +63,7 @@ fi
 
 [[ -x /usr/bin/google-chrome-stable ]] || { echo "E: google-chrome-stable is not installed"; exit 1; }
 # the launcher shipped with a generic browser icon (the image carries no Google artwork); now Chrome's own icon exists
-[[ -f $LAUNCHER ]] && sed -i 's/^Icon=web-browser$/Icon=google-chrome/' "$LAUNCHER"
+[[ -f $LAUNCHER ]] && sed -i -E 's/^Icon=(web-browser|applications-internet)$/Icon=google-chrome/' "$LAUNCHER"   # KDE: Breeze's icon
 # Armbian's branding policies (armbian.com homepage, a read-only "Armbian" bookmarks folder, "Managed by your
 # organization"): moved out of the policy directories, as the image build does. Chrome reads EVERY file in
 # policies/managed and policies/recommended (config_dir_policy_loader.cc), so a rename in place is not enough.

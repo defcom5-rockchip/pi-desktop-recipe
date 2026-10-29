@@ -6,7 +6,7 @@
 # and the user still finds every app in the app grid: a placeholder launcher runs this script, and the installer removes
 # the placeholder once the real app's own menu entry exists.
 #
-# Usage: pidesktop-get <app> [arguments for the app]      apps: libreoffice gimp inkscape thunderbird vscodium firefox
+# Usage: pidesktop-get <app> [arguments for the app]      apps: libreoffice gimp inkscape thunderbird vscodium firefox chromium
 set -u
 APP=${1:-}; [[ $# -gt 0 ]] && shift
 RUN=""   # what to exec once installed (defaults to BIN)
@@ -23,8 +23,10 @@ case $APP in
 	             WHAT="VSCodium, the community build of VS Code with Microsoft's telemetry removed"; FROM="the VSCodium project"; SIZE="about 160 MB" ;;
 	firefox)     BIN=/usr/bin/firefox;     TITLE="Firefox";      ICON=pidesktop-get-web; RUN=/usr/local/bin/firefox
 	             WHAT="Firefox, set up for this board's graphics chip (hardware video decode)"; FROM="the Ubuntu Mozilla Team"; SIZE="about 90 MB" ;;
-	--list)      echo "libreoffice gimp inkscape thunderbird vscodium firefox"; exit 0 ;;
-	*)           echo "usage: pidesktop-get <libreoffice|gimp|inkscape|thunderbird|vscodium|firefox> [args]" >&2; exit 2 ;;
+	chromium)    BIN=/usr/bin/chromium;    TITLE="Chromium";     ICON=internet-web-browser   # KDE edition only (the GNOME image ships it)
+	             WHAT="Chromium, the open-source browser Chrome is built on, with hardware video decode"; FROM="the XtraDeb project"; SIZE="about 130 MB" ;;
+	--list)      echo "libreoffice gimp inkscape thunderbird vscodium firefox chromium"; exit 0 ;;
+	*)           echo "usage: pidesktop-get <libreoffice|gimp|inkscape|thunderbird|vscodium|firefox|chromium> [args]" >&2; exit 2 ;;
 esac
 
 if [[ ! -x $BIN ]]; then
