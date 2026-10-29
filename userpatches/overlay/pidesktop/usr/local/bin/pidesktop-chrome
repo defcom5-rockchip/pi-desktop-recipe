@@ -15,11 +15,15 @@ if [[ ! -x $CHROME ]]; then
 		--text="Google Chrome isn't installed yet.\n\nPlaid Pi can't include Chrome, but it can download it from Google for you (about 120 MB). After that it updates with the rest of your software." \
 		|| exit 0
 	# every output line becomes the dialog's status text ("# ..."), trimmed to fit. The installer prints nothing until
-	# pkexec has the password, so the first text says what is really happening then. --no-cancel stays: closing the
-	# window would break the pipe and kill apt mid-install.
-	pkexec /usr/local/sbin/pidesktop-install-chrome 2>&1 | sed -u 's/^\(.\{0,64\}\).*/# \1/' |
-		zenity --progress --pulsate --auto-close --no-cancel --title="$TITLE" --width=440 \
-			--text="Waiting for your password…"
+	# pkexec has the password. --no-cancel stays: closing the window would break the pipe and kill apt mid-install.
+	# The progress window opens with the installer's first line, so only after the password: KWin (KDE) opens the
+	# password prompt behind a window that already has focus. A dismissed prompt prints pkexec's own error and nothing else.
+	pkexec /usr/local/sbin/pidesktop-install-chrome 2>&1 | sed -u 's/^\(.\{0,64\}\).*/# \1/' | {
+		IFS= read -r first || exit 0
+		case $first in *"Error executing command as another user"*) cat >/dev/null; exit 0 ;; esac
+		{ printf '%s\n' "$first"; cat; } |
+			zenity --progress --pulsate --auto-close --no-cancel --title="$TITLE" --width=440 --text="Starting…"
+	}
 	rc=${PIPESTATUS[0]}
 	if [[ ! -x $CHROME ]]; then
 		[[ $rc -eq 126 ]] && exit 0   # password dialog dismissed
