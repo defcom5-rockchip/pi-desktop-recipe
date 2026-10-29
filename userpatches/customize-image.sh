@@ -667,6 +667,13 @@ if [[ $PDDE == kde ]]; then   # same decision for KDE's store: Discover (and its
 	log "KDE: Discover removed [${_dp:-not installed}]"
 	# snapd came in with Discover's snap backend (Recommends) and is enabled; the GNOME image has none (PRIVACY.md).
 	safe_purge snapd || warn "snapd purge refused"
+	# Apps the KDE desktop list brings that duplicate a KDE app or that the GNOME edition never ships (G-Man,
+	# 2026-10-29: "apps we don't need?"): Terminator (Konsole), KWrite (Kate), GNOME Help + its documents (KDE Help
+	# Center), Transmission, Qrca (a barcode scanner without a camera), Software Sources / Additional Drivers (Qt).
+	# One safe_purge per app: each refuses on its own if anything else would leave with it.
+	for _app in "terminator" "kwrite" "yelp gnome-user-docs" "transmission-gtk transmission-common" "qrca" "software-properties-qt"; do
+		safe_purge $_app || warn "KDE app trim: [$_app] kept (purge refused)"
+	done
 	# keep what the GNOME image keeps: fwupd (firmware updates, PRIVACY.md lists its timer) and flatpak would otherwise
 	# leave with the hook's autoremove once Discover's backends are gone
 	for p in fwupd flatpak; do dpkg -s "$p" >/dev/null 2>&1 && apt-mark manual "$p" >/dev/null; done
