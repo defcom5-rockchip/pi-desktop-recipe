@@ -271,6 +271,15 @@ else
 fi
 install -d /etc/mpv
 install -m0644 -o root -g root "$OV"/etc/mpv/mpv.conf /etc/mpv/mpv.conf 2>/dev/null && log "mpv $(dpkg-query -W -f='${Version}' mpv) + /etc/mpv/mpv.conf (audio sync, bilinear chroma; hwdec decided below)"
+# Started from the menu or a drop, mpv runs in pseudo-gui mode, whose idle=once quits the moment a load fails — a dropped file
+# that can't be opened closes the window with no explanation (KDE 5B card 2026-11-01, smb:// drops). idle=yes keeps the window;
+# the OSD text comes from /etc/mpv/scripts/pidesktop-netpath.lua. A runtime set from a script is not honoured, so it goes on the
+# command line: a copy of the package's desktop entry under /usr/local/share/applications overrides the package's one.
+if [[ -f /usr/share/applications/mpv.desktop ]]; then
+	install -d /usr/local/share/applications
+	sed 's/^Exec=mpv --player-operation-mode=pseudo-gui /&--idle=yes /' /usr/share/applications/mpv.desktop > /usr/local/share/applications/mpv.desktop
+	grep -q -- '--idle=yes' /usr/local/share/applications/mpv.desktop && log "mpv: desktop entry keeps the window after a failed load (--idle=yes)" || warn "mpv desktop entry override failed"
+fi
 # Zero-copy first only when it pays off. It needs (1) rockchip-vaapi 2.5.0 or later (drain fix: no leak on an abandoned
 # zero-copy attempt; slot and buffer locks) and (2) an mpv that handles the Mali driver's integer-texture and refused planes
 # (Pi-Desktop's mpv build, patch 0001; detected by its log string, not by version). Then 8-bit and 10-bit both draw

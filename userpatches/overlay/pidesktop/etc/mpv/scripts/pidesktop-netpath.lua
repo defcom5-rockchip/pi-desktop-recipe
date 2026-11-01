@@ -4,14 +4,11 @@
 --  1. A network URL mpv has no handler for (smb://, sftp://, ftp://, nfs://, mtp://) is turned into a local path by the
 --     desktop's own FUSE bridge (kio-fuse on KDE, GVFS on GNOME) through /usr/local/bin/pidesktop-local-path.
 --     Such a path is read a little at a time, so the OSD suggests the Network Drive, which reads well ahead.
---  2. Started from the menu (pseudo-gui), mpv quits when a load fails (idle=once) — a dropped file that can't be opened
---     closes the window with no explanation. Keep the window and say what went wrong instead.
-local utils = require 'mp.utils'
+--  2. When a load fails, say what went wrong on the OSD. (Keeping the window open is the desktop entry's job: it starts mpv
+--     with --idle=yes, because pseudo-gui's idle=once quits on a failed load and a runtime change of idle is not honoured.)
+--     A kio-fuse path answers "Operation not permitted" when the file manager has not been given that share's password
+--     (KIO cannot ask through FUSE), so the message points at the Network Drive.
 local schemes = { smb = true, sftp = true, ftp = true, ftps = true, nfs = true, mtp = true, afp = true }
-
-if mp.get_property("player-operation-mode") == "pseudo-gui" then
-    mp.set_property("idle", "yes")
-end
 
 mp.add_hook("on_load", 50, function()
     local url = mp.get_property("stream-open-filename")
@@ -33,5 +30,9 @@ end)
 mp.register_event("end-file", function(e)
     if e.reason ~= "error" then return end
     local name = mp.get_property("path") or "the file"
-    mp.osd_message("Couldn't open " .. name .. "\n" .. (e.file_error or "unknown error"), 8)
+    local hint = ""
+    if name:match("^/run/user/%d+/kio%-fuse%-") or name:match("/gvfs/") or name:match("^[%a][%w+.-]*://") then
+        hint = "\nOpen it from the Network Drive instead (How-To, section 4): the file manager's own network view can't hand the file over."
+    end
+    mp.osd_message("Couldn't open " .. name .. "\n" .. (e.file_error or "unknown error") .. hint, 10)
 end)
