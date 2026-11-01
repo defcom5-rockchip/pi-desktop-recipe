@@ -666,6 +666,19 @@ if [[ -f $_fl ]] && ! grep -q pidesktop-set-hostname "$_fl"; then
 ' "$_fl"
 fi
 grep -q pidesktop-set-hostname "$_fl" 2>/dev/null && bash -n "$_fl" && log "first login: asks for the computer name" || warn "first login: computer-name step NOT inserted (armbian-firstlogin changed?)"
+# A Wi-Fi radio that is on but joined to nothing scans the 2.4 GHz band every few seconds (NetworkManager's disconnected-state
+# scans, back-off 5 s -> ~1 min), and on the shared Wi-Fi/Bluetooth chip that makes Bluetooth audio stutter — A/B/A by ear on two
+# boards, PipeWire and HCI error-free, coex params loaded (2026-11-01). The wizard has just offered Wi-Fi: if no network was set
+# up and a wired connection is in use, switch the radio off and say so. The network icon turns it back on at any time.
+if [[ -f $_fl ]] && ! grep -q pidesktop-wifi-radio "$_fl"; then
+	sed -i '/^\t\techo -e ".*Now starting desktop environment via \${desktop_dm}/i\
+\t\t# pidesktop-wifi-radio: Plaid Pi — a searching Wi-Fi radio makes Bluetooth audio stutter; off when wired and no Wi-Fi network was set up\
+\t\tif command -v nmcli >/dev/null \&\& [ "$(nmcli -t radio wifi 2>/dev/null)" = enabled ] \&\& ! nmcli -t -f TYPE con show 2>/dev/null | grep -q "^802-11-wireless" \&\& nmcli -t -f TYPE con show --active 2>/dev/null | grep -q "^802-3-ethernet"; then\
+\t\t\tnmcli radio wifi off \&\& echo -e "\\nWi-Fi switched off: no Wi-Fi network was set up and the wired connection is in use (a searching Wi-Fi radio makes Bluetooth audio stutter). The network icon turns it back on at any time."\
+\t\tfi\
+' "$_fl"
+fi
+grep -q pidesktop-wifi-radio "$_fl" 2>/dev/null && bash -n "$_fl" && log "first login: Wi-Fi radio off when wired and no Wi-Fi network set up" || warn "first login: Wi-Fi radio step NOT inserted (armbian-firstlogin changed?)"
 # Armbian's first login turns on GDM autologin for the new user ("1st run goes without login"). Plaid Pi shows the login
 # screen (lock screen, several users, and the branding lives there): keep the file it writes, with autologin off.
 if [[ -f $_fl ]] && grep -q 'AutomaticLoginEnable = true' "$_fl"; then
