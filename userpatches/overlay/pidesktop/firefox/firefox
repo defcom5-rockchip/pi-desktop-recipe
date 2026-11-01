@@ -5,7 +5,8 @@
 # around two video-import problems in that driver: the 8-bit NV12 chroma plane it refuses, and the 10-bit luma plane it
 # imports as an integer texture (dark picture). Tested 2026-10-12, Firefox 157, 1080p: 8-bit H.264 and 8/10-bit VP9 and
 # AV1 decode on the VPU. Source: /usr/share/pi-desktop/firefox/. Programs Firefox starts inherit this path. Wayland only.
-export LD_LIBRARY_PATH="/usr/local/lib/pidesktop-firefox-mali${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+# On a Mesa image (Panthor: no /dev/mali0) the directory is skipped and Firefox uses the stock EGL/GL, which import the planes itself.
+[ -e /dev/mali0 ] && export LD_LIBRARY_PATH="/usr/local/lib/pidesktop-firefox-mali${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export MOZ_ENABLE_WAYLAND=1
 # Off switch for troubleshooting (quit Firefox first: a running Firefox ignores a new one's environment):
 # PIDESKTOP_FFMALI=0 makes the library a pure pass-through; 10-bit is then hidden from Firefox's hardware decoder
@@ -13,8 +14,10 @@ export MOZ_ENABLE_WAYLAND=1
 # library is missing, so a broken install never draws 10-bit dark.
 case ${PIDESKTOP_FFMALI:-1} in
 	0*) export RKVA_HIDE_10BIT=1 ;;
-	*)  [ -f /usr/local/lib/pidesktop-firefox-mali/libpidesktop-ffmali.so.1 ] && [ -e /usr/lib/aarch64-linux-gnu/libmali.so.1 ] \
-	        || export RKVA_HIDE_10BIT=1 ;;
+	*)  if [ -e /dev/mali0 ]; then
+	        [ -f /usr/local/lib/pidesktop-firefox-mali/libpidesktop-ffmali.so.1 ] && [ -e /usr/lib/aarch64-linux-gnu/libmali.so.1 ] \
+	            || export RKVA_HIDE_10BIT=1
+	    fi ;;   # Mesa (Panthor): nothing to hide, Mesa imports 8- and 10-bit planes itself
 esac
 # DRM (6.0): Firefox loads Widevine from folders named in MOZ_GMP_PATH. Mozilla ships no Widevine for this platform, but
 # Google Chrome's arm64 package carries one, which Firefox loads (same module interface; checked 2026-10-23 with Firefox

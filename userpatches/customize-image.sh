@@ -7,7 +7,7 @@ RELEASE=$1; LINUXFAMILY=$2; BOARD=$3; BUILD_DESKTOP=$4
 OV=/tmp/overlay/pidesktop
 PDV="${PIDESKTOP_VERSION:-$(cat /etc/pi-desktop-release 2>/dev/null)}"; PDV="${PDV:-6.0}"   # set by the config hook pre_customize_image__pidesktop_version
 PDDE=$(cat /etc/pi-desktop-desktop 2>/dev/null); PDDE=${PDDE:-gnome}   # gnome or kde, written by the same hook (PIDESKTOP_DESKTOP)
-GPU="${PIDESKTOP_GPU_STACK:-mali}"
+GPU=$(cat /etc/pi-desktop-gpu 2>/dev/null); GPU=${GPU:-${PIDESKTOP_GPU_STACK:-mali}}   # mali | panthor | mesa, written by the same hook (PIDESKTOP_GPU_STACK)
 export DEBIAN_FRONTEND=noninteractive APT_LISTCHANGES_FRONTEND=none
 # dpkg must never stop at a conffile prompt in here (no stdin): keep the installed version of a changed conffile.
 # Lesson of the 2026-10-18 bake: xtradeb's Chromium 155 shipped a new /etc/chromium/master_preferences, Armbian's
@@ -191,14 +191,6 @@ if [[ "$GPU" == "mali" ]]; then
 		else
 			warn "libmali-hook shim NOT installed — Firefox will run in software"
 		fi
-		# Ubuntu's gdm greeter runs as dynamic users; uaccess ACLs are the only thing that reaches them (seeed's finding:
-		# otherwise mutter dies "Failed to create gbm device" -> "No GPUs found").
-		cat > /etc/udev/rules.d/50-mali-dma-heap.rules <<-'R'
-			SUBSYSTEM=="dma_heap", GROUP="render", MODE="0660", TAG+="uaccess"
-			SUBSYSTEM=="drm", KERNEL=="renderD*", TAG+="uaccess"
-			KERNEL=="mali0", GROUP="render", MODE="0660", TAG+="uaccess"
-		R
-		for u in gdm Debian-gdm sddm; do id "$u" >/dev/null 2>&1 && usermod -aG render,video "$u"; done   # sddm: the KDE greeter
 		# glvnd may still pick Mesa's EGL for some clients; publish the Mali ICD alongside so EGL_PLATFORM lookups find it
 		install -d /usr/share/glvnd/egl_vendor.d
 		[[ -f /usr/share/glvnd/egl_vendor.d/00_mali.json ]] || cat > /usr/share/glvnd/egl_vendor.d/00_mali.json <<-'J'
@@ -207,9 +199,37 @@ if [[ "$GPU" == "mali" ]]; then
 	else
 		warn "PIDESKTOP_GPU_STACK=mali but no libmali deb in overlay — image will fall to llvmpipe"
 	fi
+elif [[ "$GPU" == "panthor" ]]; then
+	# Panthor + Mesa (the KDE edition, see config-pidesktop3.conf): the vendor kernel carries the mainline Panthor driver as a
+	# module and a device-tree overlay that moves the GPU node from kbase to it; Ubuntu's Mesa 26 has panthor (GL) and panvk
+	# (Vulkan 1.4); the firmware comes with armbian-firmware. No libmali, no shim, no ld.so/glvnd overrides: stock Mesa is the
+	# whole GPU user space. Proven by hand on the 5B KDE test card 2026-10-29 (KWin composites on the GPU, Qt/Chrome/Firefox on
+	# the GPU, Firefox 4K60 AV1 1.6 % dropped and Chrome 1.25 %, both on the VPU). The 10-16 GNOME trial dropped 83 % in Firefox
+	# and is unexplained; the GNOME edition stays on mali.
+	safe_purge 'libmali-valhall-g610-*' 2>/dev/null || true
+	apt-get install -y -qq --no-install-recommends libgl1-mesa-dri libegl-mesa0 mesa-vulkan-drivers >/dev/null || warn "panthor: Mesa packages failed to install"
+	[[ -f /usr/lib/aarch64-linux-gnu/dri/panthor_dri.so ]] && log "panthor: Mesa $(dpkg-query -W -f='${Version}' libgl1-mesa-dri) with panthor_dri" || warn "panthor: Mesa has no panthor_dri.so — the desktop will run on llvmpipe"
+	[[ -f /usr/share/vulkan/icd.d/panfrost_icd.json ]] || warn "panthor: no panvk Vulkan ICD (mesa-vulkan-drivers)"
+	[[ -f /lib/firmware/arm/mali/arch10.8/mali_csffw.bin ]] && log "panthor: GPU firmware present (armbian-firmware)" || warn "panthor: /lib/firmware/arm/mali/arch10.8/mali_csffw.bin MISSING — the GPU will not start"
+	ls /lib/modules/*/kernel/drivers/gpu/drm/panthor/panthor.ko* >/dev/null 2>&1 && log "panthor: kernel module present" || warn "panthor: no panthor.ko in the kernel — check the kernel config"
+	ls /boot/dtb/rockchip/overlay/rockchip-rk3588-panthor-gpu.dtbo >/dev/null 2>&1 || warn "panthor: overlay rockchip-rk3588-panthor-gpu.dtbo not found under /boot/dtb — the GPU node would stay on kbase"
+	for f in /boot/armbianEnv.txt /usr/share/armbian/armbianEnv.txt; do
+		[[ -f $f ]] || continue
+		if grep -q '^overlays=' "$f"; then sed -i '/^overlays=/ {/panthor-gpu/! s/$/ panthor-gpu/}' "$f"; else echo 'overlays=panthor-gpu' >> "$f"; fi
+		log "$f: $(grep ^overlays= "$f")"
+	done
 else
 	log "GPU stack = $GPU (stock Mesa left alone; expect llvmpipe on the vendor kernel — control build)"
 fi
+# All GPU stacks: the VA-API driver allocates from dma_heap, and the greeters need the render node.
+# Ubuntu's gdm greeter runs as dynamic users; uaccess ACLs are the only thing that reaches them (seeed's finding:
+# otherwise mutter dies "Failed to create gbm device" -> "No GPUs found").
+cat > /etc/udev/rules.d/50-mali-dma-heap.rules <<-'R'
+	SUBSYSTEM=="dma_heap", GROUP="render", MODE="0660", TAG+="uaccess"
+	SUBSYSTEM=="drm", KERNEL=="renderD*", TAG+="uaccess"
+	KERNEL=="mali0", GROUP="render", MODE="0660", TAG+="uaccess"
+R
+for u in gdm Debian-gdm sddm; do id "$u" >/dev/null 2>&1 && usermod -aG render,video "$u"; done   # sddm: the KDE greeter
 # X11 fallback sessions: modesetting on rockchip DRM
 install -d /etc/X11/xorg.conf.d
 cat > /etc/X11/xorg.conf.d/10-rockchip-kms.conf <<-'X'
@@ -328,6 +348,8 @@ if [[ "$GPU" == "mali" ]] && install -m0644 -o root -g root "$OV"/firefox/ffmali
 	ln -sfn libpidesktop-ffmali.so.1 /usr/local/lib/pidesktop-firefox-mali/libEGL.so
 	ln -sfn libpidesktop-ffmali.so.1 /usr/local/lib/pidesktop-firefox-mali/libGL.so
 	ln -sfn /usr/lib/aarch64-linux-gnu/mali/libGLESv2.so.2 /usr/local/lib/pidesktop-firefox-mali/libGL.so.1
+elif [[ "$GPU" == "panthor" ]]; then   # Mesa imports Firefox's NV12/P010 planes itself; the launcher skips the private directory when there is no /dev/mali0
+	log "firefox: no libpidesktop-ffmali on Panthor — stock Mesa EGL/GL (5B KDE test card 2026-10-29: 4K60 AV1 on the VPU, 1.6 % dropped; 10-bit still to be checked by eye)"
 else   # Mesa build (no libmali for it to load) or the .so is missing: the launcher then keeps 10-bit in software
 	warn "libpidesktop-ffmali not installed (GPU=$GPU) — Firefox gets plain EGL/GL; 8-bit software, 10-bit hidden"
 fi
@@ -932,6 +954,8 @@ fi
 log "final guard: core desktop packages present"
 
 # ---------------------------------------------------------------- manifest
+[[ "$GPU" == panthor ]] && sed -i '/Arm Mali user-space driver (libmali)/d' /usr/share/doc/pi-desktop/copyright 2>/dev/null   # no libmali on a Panthor image
+
 {
 	echo "Plaid Pi ${PDV} — built $(date -u +%F' '%T) UTC — BOARD=$BOARD DESKTOP=$PDDE RELEASE=$RELEASE FAMILY=$LINUXFAMILY GPU=$GPU"
 	echo; echo "## key packages"
