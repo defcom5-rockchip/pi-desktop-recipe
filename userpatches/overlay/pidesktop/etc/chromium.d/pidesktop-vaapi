@@ -5,6 +5,6 @@
 # node (panthor) on Mesa images, the display controller's (rockchip-drm) on libmali images, renderD128 if neither is there.
 # JointMediaOptimizer:SrcMediaMultiBufferPreloadSeconds/60 (5.5): keep 60 s of a local or network-drive video ahead
 # instead of 10 (Chromium caps it at 50 MiB); checked present in Chromium/Chrome 155. Unknown feature parameters are ignored.
-_rn() { for r in /sys/class/drm/renderD*; do [ "$(basename "$(readlink "$r/device/driver" 2>/dev/null)")" = "$1" ] && { echo "/dev/dri/${r##*/}"; return; }; done; }
+_rn() { for r in /sys/class/drm/renderD*; do [ "$(basename "$(readlink "$r/device/driver" 2>/dev/null)")" = "$1" ] && { echo "/dev/dri/${r##*/}"; return 0; }; done; return 0; }
 PIDESKTOP_RENDER_NODE=$(_rn panthor); PIDESKTOP_RENDER_NODE=${PIDESKTOP_RENDER_NODE:-$(_rn rockchip-drm)}; PIDESKTOP_RENDER_NODE=${PIDESKTOP_RENDER_NODE:-/dev/dri/renderD128}
 export CHROMIUM_FLAGS="$CHROMIUM_FLAGS --ozone-platform-hint=wayland --render-node-override=$PIDESKTOP_RENDER_NODE --enable-features=AcceleratedVideoDecoder,AcceleratedVideoDecodeLinuxGL,AcceleratedVideoDecodeLinuxZeroCopyGL,PlatformHEVCDecoderSupport,JointMediaOptimizer:SrcMediaMultiBufferPreloadSeconds/60"

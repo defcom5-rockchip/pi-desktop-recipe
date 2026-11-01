@@ -1,7 +1,7 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 defcom5-rockchip (Pi-Desktop). See LICENSE in the recipe repository.
-# pidesktop-local-path URL — print a local path for a network URL (smb://, sftp://, ftp://, nfs://, mtp://) that only
+# pidesktop-local-path URL — print a local path for a network URL (smb://, sftp://, ftp(s)://, nfs://, mtp://, afp://) that only
 # the desktop's file manager knows how to read: kio-fuse on KDE, GVFS's FUSE mount on GNOME. Exit 1 when neither can.
 # Used by /etc/mpv/scripts/pidesktop-netpath.lua for files dropped on mpv from a network location.
 u=$1; [ -n "$u" ] || exit 1

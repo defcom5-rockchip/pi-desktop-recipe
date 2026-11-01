@@ -42,7 +42,7 @@ safe_purge() {
 pidesktop_kde_look() {
 	local BD=/usr/share/plasma/look-and-feel/org.kde.breezedark.desktop
 	local PP=/usr/share/plasma/look-and-feel/org.plaidpi.desktop CS=/usr/share/color-schemes KO="$OV"/kde
-	[[ -d $BD ]] || { warn "KDE look: Breeze Dark look-and-feel missing — Plaid look NOT applied"; return 0; }
+	[[ -d $BD ]] || { warn "KDE look: Breeze Dark look-and-feel missing — Plaid look NOT applied (nor the 18 px pointer or SDDM theme)"; return 0; }
 	rm -rf "$PP"; install -d "$PP/contents/layouts"
 	install -m0644 "$KO"/look-and-feel/org.plaidpi.desktop/metadata.json "$PP/metadata.json"
 	install -m0644 "$KO"/look-and-feel/org.plaidpi.desktop/contents/defaults "$PP/contents/defaults"
@@ -276,10 +276,15 @@ install -m0644 -o root -g root "$OV"/etc/mpv/mpv.conf /etc/mpv/mpv.conf 2>/dev/n
 # the OSD text comes from /etc/mpv/scripts/pidesktop-netpath.lua. A runtime set from a script is not honoured, so it goes on the
 # command line: a copy of the package's desktop entry under /usr/local/share/applications overrides the package's one.
 if [[ -f /usr/share/applications/mpv.desktop ]]; then
-	install -d /usr/local/share/applications
-	sed 's/^Exec=mpv --player-operation-mode=pseudo-gui /&--idle=yes /' /usr/share/applications/mpv.desktop > /usr/local/share/applications/mpv.desktop
+	sed 's/^Exec=mpv --player-operation-mode=pseudo-gui /&--idle=yes /' /usr/share/applications/mpv.desktop > /tmp/mpv.desktop.pd
+	install -Dm0644 -o root -g root /tmp/mpv.desktop.pd /usr/local/share/applications/mpv.desktop; rm -f /tmp/mpv.desktop.pd
 	grep -q -- '--idle=yes' /usr/local/share/applications/mpv.desktop && log "mpv: desktop entry keeps the window after a failed load (--idle=yes)" || warn "mpv desktop entry override failed"
 fi
+# The script that turns smb:// (and other file-manager-only) drops into a playable path and writes the OSD text, plus its
+# helper. The overlay is not copied wholesale: every shipped file is installed here (review 2026-11-01 caught these two missing).
+install -Dm0644 -o root -g root "$OV"/etc/mpv/scripts/pidesktop-netpath.lua /etc/mpv/scripts/pidesktop-netpath.lua
+install -Dm0755 -o root -g root "$OV"/usr/local/bin/pidesktop-local-path /usr/local/bin/pidesktop-local-path
+[[ -f /etc/mpv/scripts/pidesktop-netpath.lua && -x /usr/local/bin/pidesktop-local-path ]] && log "mpv: network-drop script + path helper installed" || warn "mpv: network-drop script/helper missing"
 # Zero-copy first only when it pays off. It needs (1) rockchip-vaapi 2.5.0 or later (drain fix: no leak on an abandoned
 # zero-copy attempt; slot and buffer locks) and (2) an mpv that handles the Mali driver's integer-texture and refused planes
 # (Pi-Desktop's mpv build, patch 0001; detected by its log string, not by version). Then 8-bit and 10-bit both draw
