@@ -641,6 +641,11 @@ echo "${PDV}" > /etc/pi-desktop-release
 install -m0755 "$OV"/usr/local/sbin/pidesktop-os-release /usr/local/sbin/pidesktop-os-release
 install -Dm0644 "$OV"/etc/apt/apt.conf.d/99pidesktop-os-release /etc/apt/apt.conf.d/99pidesktop-os-release
 install -Dm0644 "$OV"/etc/apt/apt.conf.d/52pidesktop-unattended /etc/apt/apt.conf.d/52pidesktop-unattended && log "apt: daily job on (Armbian ships it off), unattended = Ubuntu security + browser vendors"
+# The daily job must not fire the moment the system boots: Ubuntu's Persistent=true timers run a missed day at boot, and on a
+# first boot that upgrade ran during the first-login wizard, which waits for the boot to settle (2026-11-01). 15/25 min after boot instead.
+install -Dm0644 -o root -g root "$OV"/etc/systemd/system/apt-daily.timer.d/10-pidesktop-boot.conf /etc/systemd/system/apt-daily.timer.d/10-pidesktop-boot.conf
+install -Dm0644 -o root -g root "$OV"/etc/systemd/system/apt-daily-upgrade.timer.d/10-pidesktop-boot.conf /etc/systemd/system/apt-daily-upgrade.timer.d/10-pidesktop-boot.conf
+log "apt: daily timers run 15/25 min after boot, never as a catch-up at boot"
 install -Dm0644 "$OV"/etc/systemd/system.conf.d/60-pidesktop-watchdog.conf /etc/systemd/system.conf.d/60-pidesktop-watchdog.conf && log "watchdog: RuntimeWatchdogSec=30s (dw_wdt resets a hung board)"
 # rpcbind (port 111) listened from the first boot, pulled in by Armbian's NFS client packages. Disabled, not masked: an
 # NFSv3 mount still starts it on demand.
@@ -959,7 +964,7 @@ log "journald: persistent (200 MB)"
 # (The first version of this guard sat after the script's exit 0 and never ran; bake #4 of 2026-10-03 shipped without
 # GNOME's Help content because of a purge this guard would not have caught either. Belt and braces: it runs here.)
 MISSING=""
-if [[ $PDDE == kde ]]; then CORE="plasma-workspace plasma-desktop kwin-wayland sddm systemsettings dolphin konsole okular plasma-pa zenity pipewire wireplumber"
+if [[ $PDDE == kde ]]; then CORE="plasma-workspace plasma-desktop kwin-wayland sddm systemsettings dolphin konsole okular plasma-pa zenity pipewire wireplumber kio-fuse"   # kio-fuse: pidesktop-local-path (mpv smb:// drops) — came in by Recommends until 2026-11-01
 else CORE="gnome-shell gdm3 libmutter-18-0 mutter-common gnome-session-bin gnome-control-center nautilus chromium pipewire wireplumber fonts-adwaita gnome-user-docs yelp"; fi
 for p in $CORE; do
 	dpkg -s "$p" >/dev/null 2>&1 || MISSING="$MISSING $p"

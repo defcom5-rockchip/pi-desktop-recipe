@@ -32,7 +32,7 @@ stand_down(){ [ -e "$ABSENT" ] || return 0; log "$(cat "$ABSENT") — sentinel s
 was_blocked=0; expect=0; miss=0; last_fail=0; seen_pc=0; seen_hci=0; fresh=0
 log(){ logger -t bt-sentinel "$*"; }
 notify(){ local pid u addr
-  for pid in $(pgrep -x gnome-shell); do u=$(ps -o user= -p "$pid" | tr -d " "); [ "$u" != gdm ] && break; u=""; done
+  for pid in $(pgrep -x 'gnome-shell|plasmashell'); do u=$(ps -o user= -p "$pid" | tr -d " "); [ "$u" != gdm ] && [ "$u" != sddm ] && break; u=""; done   # GNOME or Plasma session (2026-11-01: toasts were GNOME-only)
   [ -n "$u" ] || return 0
   addr=$(tr "\0" "\n" < /proc/$pid/environ 2>/dev/null | grep "^DBUS_SESSION_BUS_ADDRESS=")
   [ -n "$addr" ] || return 0
