@@ -86,4 +86,12 @@ under /mnt/ for other programs. mpv, the video player, keeps the most ahead.
 To remove a drive, open "Network Drive", click the bin next to it, then
 "Remove".
 
+5. Bluetooth speakers and Wi-Fi
+-------------------------------
+Bluetooth speakers that are also on Wi-Fi (WiiM, Sonos and the like) share one
+radio between the two: on a 2.4 GHz Wi-Fi network they can hiccup or drop the
+Bluetooth link now and then. Put the speaker on a 5 GHz network or on Ethernet.
+The same goes for this computer: Wi-Fi switched on but joined to no network
+searches the 2.4 GHz band every few seconds; join a network or switch Wi-Fi off.
+
 More help: https://github.com/defcom5-rockchip/pi-desktop
