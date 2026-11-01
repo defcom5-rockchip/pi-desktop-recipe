@@ -60,6 +60,9 @@ pidesktop_kde_look() {
 	ln -sfn /usr/share/backgrounds/pi-desktop/penguin-drop-plaid-v2-3840x2160.png /usr/share/wallpapers/PlaidPi/contents/images/3840x2160.png
 	install -Dm0644 "$KO"/xdg/kdeglobals /etc/xdg/kdeglobals
 	install -Dm0644 "$KO"/xdg/kscreenlockerrc /etc/xdg/kscreenlockerrc
+	# Pointer 18 px (Breeze's 24 is too big at 4K, 2026-11-01): system default for every account + the same on the SDDM login screen.
+	install -Dm0644 "$KO"/xdg/kcminputrc /etc/xdg/kcminputrc
+	install -Dm0644 "$KO"/sddm/10-plaid-pointer.conf /etc/sddm.conf.d/10-plaid-pointer.conf
 	[[ -d /usr/share/sddm/themes/breeze ]] && install -m0644 "$KO"/sddm/theme.conf.user /usr/share/sddm/themes/breeze/theme.conf.user
 	# Armbian's skel ships a Plasma layout; Plasma keeps a skel layout whose activity it can match and only falls back
 	# to the look-and-feel layout (ours) when it cannot. Remove it so every new user gets ours.

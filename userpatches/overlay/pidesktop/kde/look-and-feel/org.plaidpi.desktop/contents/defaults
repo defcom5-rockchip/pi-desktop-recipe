@@ -15,6 +15,7 @@ Image=PlaidPi
 
 [kcminputrc][Mouse]
 cursorTheme=breeze_cursors
+cursorSize=18
 
 [kwinrc][org.kde.kdecoration2]
 library=org.kde.breeze

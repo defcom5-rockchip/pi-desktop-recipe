@@ -1,0 +1,4 @@
+# Plaid Pi (KDE edition): desktop pointer default — Breeze ships 24, too big at 4K; Settings > Cursors still lets each user change it
+[Mouse]
+cursorTheme=breeze_cursors
+cursorSize=18
