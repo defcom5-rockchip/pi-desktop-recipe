@@ -352,7 +352,7 @@ if [[ "$GPU" == "mali" ]] && install -m0644 -o root -g root "$OV"/firefox/ffmali
 	ln -sfn libpidesktop-ffmali.so.1 /usr/local/lib/pidesktop-firefox-mali/libGL.so
 	ln -sfn /usr/lib/aarch64-linux-gnu/mali/libGLESv2.so.2 /usr/local/lib/pidesktop-firefox-mali/libGL.so.1
 elif [[ "$GPU" == "panthor" ]]; then   # Mesa imports Firefox's NV12/P010 planes itself; the launcher skips the private directory when there is no /dev/mali0
-	log "firefox: no libpidesktop-ffmali on Panthor — stock Mesa EGL/GL (5B KDE test card 2026-10-29: 4K60 AV1 on the VPU, 1.6 % dropped; 10-bit still to be checked by eye)"
+	log "firefox: no libpidesktop-ffmali on Panthor — stock Mesa EGL/GL (5B KDE Panthor image 2026-11-01: 4K60 AV1 on the VPU 1.3 % dropped, HEVC Main 10 4K on the VPU with a correct picture by eye)"
 else   # Mesa build (no libmali for it to load) or the .so is missing: the launcher then keeps 10-bit in software
 	warn "libpidesktop-ffmali not installed (GPU=$GPU) — Firefox gets plain EGL/GL; 8-bit software, 10-bit hidden"
 fi

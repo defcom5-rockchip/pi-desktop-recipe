@@ -39,11 +39,13 @@ Chromium is the web browser for links you open in other apps: the first link
 offers to install it, and if you install Chrome instead, choose "Make Default".
 
 Chromium, Chrome, Firefox and mpv, the video player, are set up to use the
-board's video engine for H.264, VP9 and AV1. LibreOffice comes as Writer, Calc,
-Impress, Draw and Math; the database module isn't included because it needs
-Java ("sudo apt install libreoffice-base" adds it). VSCodium is the community
-build of VS Code with Microsoft's telemetry removed. Everything updates through
-Pro Updates (and the daily security updates install by themselves).
+board's video engine for H.264, HEVC, VP9 and AV1, and with the standard open
+graphics driver this edition plays 8-bit and 10-bit video on it. LibreOffice
+comes as Writer, Calc, Impress, Draw and Math; the database module isn't
+included because it needs Java ("sudo apt install libreoffice-base" adds it).
+VSCodium is the community build of VS Code with Microsoft's telemetry removed.
+Everything updates through Pro Updates (and the daily security updates install
+by themselves).
 
 
 3. Screen size and refresh rate
