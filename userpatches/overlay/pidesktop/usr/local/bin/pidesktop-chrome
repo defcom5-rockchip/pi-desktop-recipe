@@ -6,7 +6,12 @@
 # so the flags live here, not in Chrome's own launcher, and Chrome updates can't strip them.
 CHROME=/usr/bin/google-chrome-stable
 # JointMediaOptimizer:…/60 (5.5): 60 s of a local or network-drive video ahead instead of 10, capped by Chrome at 50 MiB.
-FLAGS=(--ozone-platform=wayland --render-node-override=/dev/dri/renderD128
+# --render-node-override: Chromium's VA-API setup otherwise picks the first render node it finds, which on this kernel can be the
+# NPU's ("picking rknpu" -> no hardware decode). Render nodes are numbered in probe order, so pick by driver: the Mali GPU node
+# (panthor) on Mesa images, the display controller's (rockchip-drm) on libmali images, renderD128 if neither is there.
+_rn() { for r in /sys/class/drm/renderD*; do [ "$(basename "$(readlink "$r/device/driver" 2>/dev/null)")" = "$1" ] && { echo "/dev/dri/${r##*/}"; return; }; done; }
+NODE=$(_rn panthor); NODE=${NODE:-$(_rn rockchip-drm)}; NODE=${NODE:-/dev/dri/renderD128}
+FLAGS=(--ozone-platform=wayland --render-node-override=$NODE
 	--enable-features=AcceleratedVideoDecoder,AcceleratedVideoDecodeLinuxGL,AcceleratedVideoDecodeLinuxZeroCopyGL,PlatformHEVCDecoderSupport,JointMediaOptimizer:SrcMediaMultiBufferPreloadSeconds/60)
 TITLE="Google Chrome"
 
