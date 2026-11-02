@@ -82,5 +82,9 @@ radio between the two: on a 2.4 GHz Wi-Fi network they can hiccup or drop the
 Bluetooth link now and then. Put the speaker on a 5 GHz network or on Ethernet.
 The same goes for this computer: Wi-Fi switched on but joined to no network
 searches the 2.4 GHz band every few seconds; join a network or switch Wi-Fi off.
+WiiM speakers have a receive buffer of their own: in WiiM Home, Browse >
+"Manage" (or "Customize") next to Source Input > the ... on the Bluetooth tile >
+Playback Latency. 300 ms played every test here without a hiccup at the
+highest-quality SBC setting; higher values are not better.
 
 More help: https://github.com/defcom5-rockchip/pi-desktop
