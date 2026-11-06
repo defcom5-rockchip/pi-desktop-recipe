@@ -79,6 +79,21 @@ for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.sources /etc/apt/source
 done
 apt-get update -qq || warn "apt update failed (https ports?)"
 
+# ---------------------------------------------------------------- security: the day's Ubuntu updates, not the cache's
+# Armbian upgrades the base packages only when it CREATES a rootfs cache (rootfs-create.sh: one `apt-get upgrade`);
+# every build in the following weeks reuses that cache as it was. Measured 2026-11-06: the 2026-11-04 image, built from a
+# 2026-11-01 cache, shipped 12 packages behind resolute-security (apt, pcre2, ca-certificates, net-snmp, tornado).
+# Only Ubuntu's own sources are consulted here (the PPAs are added later in this script; Armbian's repo is explicitly
+# left out), so the kernel, u-boot, firmware and BSP packages cannot be touched by this step.
+before=$(dpkg-query -W -f='${Package} ${Version}\n' | sort)
+if apt-get -y -qq -o Dir::Etc::SourceList=/etc/apt/sources.list.d/ubuntu.sources -o Dir::Etc::SourceParts=/dev/null \
+	dist-upgrade >/dev/null 2>&1; then
+	after=$(dpkg-query -W -f='${Package} ${Version}\n' | sort)
+	log "ubuntu updates at build time: $(comm -13 <(echo "$before") <(echo "$after") | wc -l) package(s) changed: $(comm -13 <(echo "$before") <(echo "$after") | awk '{print $1}' | tr '\n' ' ')"
+else
+	warn "ubuntu dist-upgrade at build time failed; the image carries the rootfs cache's package versions"
+fi
+
 # ---------------------------------------------------------------- audio: ONE server (pipewire), not two (ary11 deadlock)
 # configng gnome.yaml keeps pulseaudio in the resolute block (only trixie/forky/sid swap to pipewire).
 # The purge takes pulseaudio-utils (pactl) with it; it is reinstalled below — pactl is a client only (no daemon) and
