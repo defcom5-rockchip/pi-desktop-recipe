@@ -1,0 +1,34 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: defcom5-rockchip <286489597+defcom5-rockchip@users.noreply.github.com>
+Date: Sun, 8 Nov 2026 12:30:00 -0700
+Subject: [PATCH] bcmdhd: list each BIP_GMAC cipher suite once so wiphy_register() accepts the wiphy
+
+Stable 6.1.191 adds wiphy_cipher_suites_valid() to wiphy_register() ("wifi: cfg80211:
+reject duplicate wiphy cipher suite entries", 539d7f795bf0): a wiphy whose cipher_suites
+array lists the same suite twice is rejected with -EINVAL.
+
+bcmdhd's __wl_cipher_suites[] lists WLAN_CIPHER_SUITE_BIP_GMAC_128 and _256 in the MFP
+block and again in the WL_GCMP block. Both are defined for the Rockchip build (-DMFP,
+-DWL_GCMP_SUPPORT), so on 6.1.191 wl_setup_wiphy() fails ("Couldn not register wiphy
+device (-22)"), wl_cfg80211_attach() fails, dhd_detach() runs on a half-built instance
+(flush_work/kobject_put warnings) and the Orange Pi 5B reset in a loop at boot
+(2026-11-08). Keep the two entries only when the MFP block did not already add them.
+
+Signed-off-by: defcom5-rockchip <286489597+defcom5-rockchip@users.noreply.github.com>
+---
+ drivers/net/wireless/rockchip_wlan/rkwifi/bcmdhd/wl_cfg80211.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+--- a/drivers/net/wireless/rockchip_wlan/rkwifi/bcmdhd/wl_cfg80211.c
++++ b/drivers/net/wireless/rockchip_wlan/rkwifi/bcmdhd/wl_cfg80211.c
+@@ -1441,8 +1441,10 @@ static const u32 __wl_cipher_suites[] = {
+ #ifdef WL_GCMP
+ 	WLAN_CIPHER_SUITE_GCMP,
+ 	WLAN_CIPHER_SUITE_GCMP_256,
++#if !defined(MFP) || (LINUX_VERSION_CODE < KERNEL_VERSION(4, 0, 0))
+ 	WLAN_CIPHER_SUITE_BIP_GMAC_128,
+ 	WLAN_CIPHER_SUITE_BIP_GMAC_256,
++#endif /* !MFP: the MFP block above already lists both */
+ #endif /* WL_GCMP */
+ };
+ 
