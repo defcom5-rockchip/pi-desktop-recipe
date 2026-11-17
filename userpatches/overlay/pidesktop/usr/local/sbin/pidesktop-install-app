@@ -12,7 +12,15 @@
 # Chromium (KDE edition only; the GNOME image ships it) gets back Armbian's neutral master_preferences, which the GNOME
 # image keeps and the KDE build staged before taking Chromium out.
 #
-# Usage: pidesktop-install-app <libreoffice|gimp|inkscape|thunderbird|vscodium|firefox|chromium>
+# dvdcss (6.5): not an app but the DVD decryption library, which cannot be shipped: Ubuntu's libdvd-pkg downloads the libdvdcss
+# source and builds it on this machine. Its postinst cannot build while apt holds the dpkg lock, and the post-invoke hook it
+# installs only runs on the next apt run, so the build runs here right after the install: dpkg-reconfigure (noninteractive).
+# The build log is /usr/src/libdvd-pkg/libdvdcss2_*.build.
+#
+# bdj (6.5): Java 21 and libbluray's BD-J module, for Blu-ray discs and copies whose menus are written in Java. Java 21, not
+# the default Java: libbluray 1.4's BD-J sets a Java security manager, which Java 24 and later no longer allow.
+#
+# Usage: pidesktop-install-app <libreoffice|gimp|inkscape|thunderbird|vscodium|firefox|chromium|dvdcss|bdj>
 #        pidesktop-install-app --check-key        (no root: fetch VSCodium's key and compare it with the pinned fingerprint)
 set -euo pipefail
 LOG=/var/log/pidesktop-install-app.log
@@ -76,13 +84,22 @@ case $APP in
 	gimp)        PKGS=gimp;        BIN=/usr/bin/gimp;        DESKTOP=gimp.desktop ;;
 	inkscape)    PKGS=inkscape;    BIN=/usr/bin/inkscape;    DESKTOP=org.inkscape.Inkscape.desktop ;;
 	thunderbird) PKGS=thunderbird; BIN=/usr/bin/thunderbird; DESKTOP=thunderbird.desktop ;;
-	vscodium)    PKGS=codium;      BIN=/usr/bin/codium;      DESKTOP=codium.desktop ;;
+	vscodium)    PKGS=codium;      BIN=/usr/bin/codium;      DESKTOP=com.visualstudio.CodeOSS.desktop ;;   # VSCodium's menu entry since 1.143 (was codium.desktop)
 	firefox)     PKGS=firefox;     BIN=/usr/bin/firefox;     DESKTOP=firefox.desktop ;;
 	chromium)    PKGS="chromium chromium-sandbox"; BIN=/usr/bin/chromium; DESKTOP=chromium.desktop
 	             APT_REC=(--no-install-recommends) ;;   # as the GNOME image installs it: no GNOME notification daemon or printer tool
+	dvdcss)      PKGS=libdvd-pkg;  BIN=/usr/lib/aarch64-linux-gnu/libdvdcss.so.2; DESKTOP="" ;;   # a library, not a binary: present() tests -e
+	bdj)         PKGS="libbluray-bdj openjdk-21-jre-headless"; BIN=/usr/lib/jvm/java-21-openjdk-arm64/lib/server/libjvm.so; DESKTOP="" ;;   # a jar + Java 21
 	--check-key) fetch_vscodium_key "$(mktemp)"; exit $? ;;
-	*)           echo "usage: pidesktop-install-app <libreoffice|gimp|inkscape|thunderbird|vscodium|firefox|chromium>" >&2; exit 2 ;;
+	*)           echo "usage: pidesktop-install-app <libreoffice|gimp|inkscape|thunderbird|vscodium|firefox|chromium|dvdcss|bdj>" >&2; exit 2 ;;
 esac
+present() {
+	case $APP in
+		dvdcss) [[ -e $BIN ]] ;;
+		bdj)    [[ "$(dpkg-query -W -f='${db:Status-Status}' libbluray-bdj 2>/dev/null)" == installed && -e $BIN ]] ;;
+		*)      [[ -x $BIN ]] ;;
+	esac
+}
 
 [[ $EUID -eq 0 ]] || { echo "must run as root" >&2; exit 1; }
 exec 9>/run/lock/pidesktop-install-app.lock
@@ -92,7 +109,7 @@ APT_LOCK=(-o DPkg::Lock::Timeout=600)
 # 2026-10-18 bake). Armbian's branding drops files for apps that are not installed yet (/etc/chromium, /etc/thunderbird),
 # so keep the file on disk, as the image build does.
 APT_CONF=(-o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold)
-exec > >(tee -a "$LOG") 2>&1
+exec > >(tee -ap "$LOG") 2>&1   # -p: if the progress window goes away, tee keeps logging instead of killing apt with SIGPIPE
 echo "== $(date '+%F %T') installing $APP ($PKGS)"
 # First boot: apt-daily refreshes the package lists and the daily security updates install right after login, holding
 # apt's locks for a few minutes. DPkg::Lock::Timeout waits for dpkg's lock, but apt-get update tries its lists lock only
@@ -122,20 +139,29 @@ EOF
 	chmod 644 "$VSCODIUM_SOURCES"
 fi
 
-if [[ ! -x $BIN ]]; then
+if ! present; then
 	wait_apt
+	if [[ $APP == dvdcss ]]; then
+		# libdvd-pkg's two debconf questions (both default to yes): answered so its later rebuilds stay unattended too
+		printf '%s\n' "libdvd-pkg libdvd-pkg/build boolean true" "libdvd-pkg libdvd-pkg/post-invoke_hook-install boolean true" | debconf-set-selections
+	fi
 	echo "Updating package lists"
 	apt-get "${APT_LOCK[@]}" update -q
 	echo "Downloading and installing $APP"
 	apt-get "${APT_LOCK[@]}" "${APT_CONF[@]}" install -y -q "${APT_REC[@]}" $PKGS
+	if [[ $APP == dvdcss ]] && ! present; then
+		echo "Building the DVD library (libdvdcss)"
+		rc=0; dpkg-reconfigure -f noninteractive libdvd-pkg || rc=$?   # set -e: keep going to the log lines below
+		echo "dpkg-reconfigure libdvd-pkg: exit $rc"
+	fi
 fi
-[[ -x $BIN ]] || { echo "E: $APP is not installed after apt finished"; exit 1; }
+present || { echo "E: $APP is not installed after apt finished$( [[ $APP == dvdcss ]] && echo ' (build log: /usr/src/libdvd-pkg/)')"; exit 1; }
 [[ $APP == firefox ]] && firefox_apply_pidesktop_pieces
 [[ $APP == chromium ]] && chromium_apply_pidesktop_pieces
 
 # the placeholder made way for the real menu entry
-if [[ -f $SHADOW/$DESKTOP ]]; then
+if [[ -n $DESKTOP && -f $SHADOW/$DESKTOP ]]; then
 	rm -f "$SHADOW/$DESKTOP"
 	update-desktop-database "$SHADOW" 2>/dev/null || true
 fi
-echo "== done: $(dpkg-query -W -f='${Package} ${Version}' "${PKGS%% *}")"
+echo "== done: $(dpkg-query -W -f='${Package} ${Version}' "${PKGS%% *}")$( [[ $APP == dvdcss ]] && dpkg-query -W -f=', ${Package} ${Version}' libdvdcss2 2>/dev/null )"

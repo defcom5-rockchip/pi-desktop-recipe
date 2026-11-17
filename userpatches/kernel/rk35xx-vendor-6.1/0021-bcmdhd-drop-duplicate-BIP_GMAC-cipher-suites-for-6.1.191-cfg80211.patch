@@ -11,10 +11,11 @@ bcmdhd's __wl_cipher_suites[] lists WLAN_CIPHER_SUITE_BIP_GMAC_128 and _256 in t
 block and again in the WL_GCMP block. Both are defined for the Rockchip build (-DMFP,
 -DWL_GCMP_SUPPORT), so on 6.1.191 wl_setup_wiphy() fails ("Couldn not register wiphy
 device (-22)"), wl_cfg80211_attach() fails, dhd_detach() runs on a half-built instance
-(flush_work/kobject_put warnings) and the Orange Pi 5B reset in a loop at boot
-(2026-11-08). Keep the two entries only when the MFP block did not already add them.
+(flush_work/kobject_put warnings) and the board has no Wi-Fi (Orange Pi 5B, AP6275P,
+2026-11-08). Keep the two entries only when the MFP block did not already add them.
 
 Signed-off-by: defcom5-rockchip <286489597+defcom5-rockchip@users.noreply.github.com>
+Assisted-by: LLM
 ---
  drivers/net/wireless/rockchip_wlan/rkwifi/bcmdhd/wl_cfg80211.c | 2 ++
  1 file changed, 2 insertions(+)

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Service
+MimeType=inode/directory;
+Actions=cinemoskPlayDisc
+X-KDE-Priority=TopLevel
+
+[Desktop Action cinemoskPlayDisc]
+Name=Play DVD or Blu-ray
+Icon=cinemosk
+Exec=/usr/local/bin/cinemosk-play %F

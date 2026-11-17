@@ -35,10 +35,10 @@ Forwarded: not-yet
 Last-Update: 2026-10-09
 ---
 diff --git a/video/out/gpu/video.c b/video/out/gpu/video.c
-index c0a1be8..eabf917 100644
+index 6122e51..22f4344 100644
 --- a/video/out/gpu/video.c
 +++ b/video/out/gpu/video.c
-@@ -176,6 +176,7 @@ struct gl_video {
+@@ -177,6 +177,7 @@ struct gl_video {
      bool has_alpha;
      char color_swizzle[5];
      bool use_integer_conversion;
@@ -46,9 +46,9 @@ index c0a1be8..eabf917 100644
  
      struct video_image image;
  
-@@ -3757,6 +3758,20 @@ static bool pass_upload_image(struct gl_video *p, struct mp_image *mpi, uint64_t
+@@ -3889,6 +3890,20 @@ static bool pass_upload_image(struct gl_video *p, struct mp_image *mpi, uint64_t
                      .tex = tex[n],
-                     .flipped = layout.params.vflip,
+                     .flipped = p->image_params.vflip,
                  };
 +                // Some hwdec interops can only decide on the first map that a
 +                // plane is an integer texture. Dumb mode would sample it
@@ -67,7 +67,7 @@ index c0a1be8..eabf917 100644
              }
          } else {
              MP_FATAL(p, "Mapping hardware decoded surface failed.\n");
-@@ -4204,7 +4219,10 @@ static void gl_video_update_options(struct gl_video *p)
+@@ -4336,7 +4351,10 @@ static void gl_video_update_options(struct gl_video *p)
      if (m_config_cache_update(p->opts_cache)) {
          gl_lcms_update_options(p->cms);
          reinit_from_options(p);

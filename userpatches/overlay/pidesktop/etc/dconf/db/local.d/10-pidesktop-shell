@@ -9,7 +9,7 @@
 # replace Ubuntu's dock, which stays installed (gnome-shell-ubuntu-extensions) and can be switched back on in Extensions.
 enabled-extensions=['ding@rastersoft.com', 'ubuntu-appindicators@ubuntu.com', 'tiling-assistant@ubuntu.com', 'dhruva@narkagni', 'plaid-panel@pidesktop']
 # The maintainer's dock order. Firefox, LibreOffice, VSCodium and Thunderbird are first-click installers until installed.
-favorite-apps=['org.gnome.Nautilus.desktop', 'google-chrome.desktop', 'chromium.desktop', 'firefox.desktop', 'mpv.desktop', 'terminator.desktop', 'org.gnome.Settings.desktop', 'libreoffice-startcenter.desktop', 'org.gnome.Rhythmbox3.desktop', 'codium.desktop', 'thunderbird.desktop', 'pro-updates.desktop', 'audacity.desktop']
+favorite-apps=['org.gnome.Nautilus.desktop', 'google-chrome.desktop', 'chromium.desktop', 'firefox.desktop', 'mpv.desktop', 'terminator.desktop', 'org.gnome.Settings.desktop', 'libreoffice-startcenter.desktop', 'org.gnome.Rhythmbox3.desktop', 'com.visualstudio.CodeOSS.desktop', 'thunderbird.desktop', 'pro-updates.desktop', 'org.audacityteam.Audacity.desktop']
 # GNOME hides "Log Out" in the power menu when there is one local user and one session type — every fresh Pi-Desktop
 always-show-log-out=true
 

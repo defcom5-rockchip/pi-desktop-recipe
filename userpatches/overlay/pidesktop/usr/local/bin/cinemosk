@@ -1,0 +1,552 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 defcom5-rockchip
+"""Cinemosk (Plaid Pi): choose how films and TV look and move on the screen, with the measured cost of each choice
+beside it.
+
+Every change writes all keys of the Cinemosk settings contract (downscale, upscale, upscale_film, sd_colour, deband_sd,
+fill, even_film) to ~/.config/mpv/script-opts/cinemosk.conf; /etc/mpv/scripts/pidesktop-cinema.lua reads it when a film
+starts. The recommended choice in each group leaves the GPU the most room for the desktop: fewest dropped frames, then
+lowest GPU use.
+"""
+import json
+import glob
+import os
+import tempfile
+
+import gi
+
+gi.require_version("Gtk", "4.0")
+gi.require_version("Adw", "1")
+from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
+
+APP_ID = "org.plaidpi.Cinemosk"
+CONFIG = GLib.get_user_config_dir()
+CONF = os.path.join(CONFIG, "mpv", "script-opts", "cinemosk.conf")
+OVERRIDES = os.path.join(CONFIG, "mpv", "cinema-modes.json")
+PLAY_DISC = "/usr/local/bin/cinemosk-play"
+INSTALLER = "/usr/local/sbin/pidesktop-install-app"   # first-click installer: pkexec asks for the password
+
+
+def dvdcss_installed():
+    return bool(glob.glob("/usr/lib/*/libdvdcss.so.2"))
+
+
+BDJ_JVM = "/usr/lib/jvm/java-21-openjdk-arm64/lib/server/libjvm.so"   # libbluray 1.4's BD-J needs Java 23 or older
+
+
+def bdj_installed():
+    return bool(glob.glob("/usr/share/java/libbluray-j2se-*.jar")) and os.path.exists(BDJ_JVM)
+
+# The settings contract shared with the mpv script (2026-11-14): key, values, default, in the order they are written.
+# A missing key or an unknown value reads as the default, unknown keys are ignored, and every change writes all keys.
+LEVELS = ("smooth", "balanced", "sharp")
+CONTRACT = (
+    ("downscale",    LEVELS,            "smooth"),
+    ("upscale",      LEVELS,            "smooth"),
+    ("upscale_film", LEVELS,            "balanced"),
+    ("sd_colour",    ("fast", "exact"), "fast"),
+    ("deband_sd",    ("yes", "no"),     "yes"),
+    ("fill",         ("auto", "off"),   "auto"),
+    ("even_film",    ("auto", "off"),   "auto"),
+)
+DEFAULTS = {key: default for key, _values, default in CONTRACT}
+VALID = {key: values for key, values, _default in CONTRACT}
+
+# Measured on an Orange Pi 5 Plus, Plaid Pi KDE edition (Mesa, Panthor), mpv 0.42, full screen. "Uses N % of the GPU" =
+# the GPU's own busy figure scaled by its clock, as a share of its full capacity (the desktop alone: 0 %). Drops are
+# dropped frames a minute. None = not measured yet: the row says so and is never the recommended choice.
+MEASURED_ON = "on an Orange Pi 5 Plus with the KDE edition and mpv 0.42, November 2026"
+CASES = [
+    # 13 November 2026, one 60-second run per figure.
+    ("downscale", "4K video on a 1080p screen",
+     "A 4K film or YouTube stream on a Full HD screen: every frame is reduced to a quarter of its pixels.",
+     [  # key, name, look, filter, drops per minute, GPU used %
+        ("smooth",   "Smooth",   "Clean, slightly soft",               "bilinear, one pass",     0, 11),
+        ("balanced", "Balanced", "Crisper fine detail",                "hermite, mpv's default", 7, 64),
+        ("sharp",    "Sharp",    "Most detail, slight halos on edges", "lanczos",                28, 73),
+     ]),
+    # 14 November 2026, an NTSC DVD film (23.976 fps, 720x480, soft telecine) on a 4K 60 Hz screen, banding clean-up and fill off,
+    # 40-second runs, drops a minute rounded (Smooth: 1 in 40 s). Left out on purpose: mpv's high-quality ewa_lanczossharp used 87 %
+    # of the GPU and dropped 466 frames in 42 s (13 November, same film).
+    ("upscale_film", "Films smaller than the screen (24, 25 and 30 fps)",
+     "DVDs and other films, enlarged to fit your screen. Measured with a 24 fps DVD film on a 4K screen.",
+     [
+        ("smooth",   "Smooth",   "Softest picture", "bilinear", 2, 21),
+        ("balanced", "Balanced", "Sharper edges",   "spline16", 0, 21),
+        ("sharp",    "Sharp",    "Most detail",     "spline36", 0, 28),
+     ]),
+    # 13 November 2026, a 720p59.94 TV recording on a 4K 60 Hz screen, one 60-second run per figure.
+    ("upscale", "TV, concerts and other 50/60 fps video smaller than the screen",
+     "TV recordings and concert videos, enlarged to fit your screen. Measured with a 720p TV recording on a 4K screen.",
+     [
+        ("smooth",   "Smooth",   "Softest picture", "bilinear", 1, 44),
+        ("balanced", "Balanced", "Sharper edges",   "spline16", 5, 65),
+        ("sharp",    "Sharp",    "Most detail",     "spline36", 7, 74),
+     ]),
+]
+SD_COLOUR = [  # key, name, how, what it cost with the Sharp filter on a 480p concert, recommended
+    ("fast",  "Fast", "Colours clipped to the HD range, as a TV does",
+     "Sharp: 9 dropped frames a minute, uses 69 % of the GPU", True),
+    ("exact", "Exact", "mpv's perceptual gamut mapping",
+     "Sharp: 848 dropped frames a minute, uses 86 % of the GPU; even Smooth uses 89 %", False),
+]
+
+# Switches: key -> title, short name for the saved message, what it does, value when on, value when off.
+SWITCHES = {
+    "deband_sd": ("Clean up DVD banding", "Clean up DVD banding",
+                  "Smooths the bands of colour DVDs often show in skies and dark scenes. DVDs and other "
+                  "standard-definition video only · mpv's deband filter", "yes", "no"),
+    "fill": ("Fill the screen with letterboxed 4:3 DVDs", "Fill the screen",
+             "Crops the black bars some DVDs carry above and below a wide film, so it fills a wide screen. Stays off "
+             "while DVD subtitles are on. Alt+F turns it on or off during a film.", "auto", "off"),
+    "even_film": ("Even film motion on 24 and 120 Hz screens", "Even film motion",
+                  "Many DVDs show some film frames longer than others, to suit 60 Hz TVs. This plays the film at an "
+                  "even 24 frames a second. No effect at 60 Hz.", "auto", "off"),
+}
+# Cost of each switch, measured on screen with the switch off and then on (same film, same picture choice). Fill in
+# (what was played, dropped frames a minute off, GPU used % off, dropped frames a minute on, GPU used % on); e.g.
+# ("a DVD film", 0, 19, 0, 23) reads "Measured with a DVD film: turning it on raised GPU use from 19 % to 23 %, with no
+# dropped frames." None reads "Cost not measured yet".
+# 14 November 2026, same DVD film, 4K, 40-second runs: (what was played, drops a minute off, GPU % off, drops a minute on, GPU % on).
+# Fill's own run lost its drop count to a counter reset; the two 120 Hz runs had fill on with 0 and 1 drops in 40 s.
+SWITCH_COST = {
+    "deband_sd": ("a DVD film at Smooth", 2, 21, 0, 25),
+    "fill":      ("a letterboxed DVD film at Sharp", 0, 24, 0, 28),
+    "even_film": ("a DVD film on a 120 Hz screen", 0, 32, 2, 28),
+}
+MOTION_NOTE = ("At 60 Hz, 24 fps films show the usual 3:2 judder, as on every player. On a 120 Hz screen they move "
+               "evenly when “Even film motion” is on. Through an AV receiver limited to 4K60, a 24 Hz screen mode is "
+               "the even option. TV and concert video at 60 fps plays best at 60 or 120 Hz, and at 50 fps at 50 or "
+               "100 Hz.")
+
+
+def frames(n):
+    return "1 dropped frame" if n == 1 else f"{n} dropped frames"
+
+
+def choice_cost(drops, used):
+    if drops is None or used is None:
+        return "Not measured yet"
+    return f"{frames(drops)} a minute · uses {used} % of the GPU, leaves {100 - used} % for the desktop"
+
+
+def cost_line(cost):
+    """The cost line under a switch, from its SWITCH_COST entry. GPU changes of 4 points or less were run-to-run noise in
+    these measurements, so they read as "about the same"."""
+    if cost is None:
+        return "Cost not measured yet"
+    film, drops_off, used_off, drops_on, used_on = cost
+    gpu = (f"kept GPU use about the same ({used_off} % and {used_on} %)" if abs(used_on - used_off) <= 4
+           else f"raised GPU use from {used_off} % to {used_on} %" if used_on > used_off
+           else f"lowered GPU use from {used_off} % to {used_on} %")
+    drops = "with no dropped frames" if drops_on == 0 else f"with {frames(drops_on)} a minute when on"
+    return f"Measured with {film}: turning it on {gpu}, {drops}."
+
+
+def read_conf():
+    conf = dict(DEFAULTS)
+    try:
+        with open(CONF, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                key, sep, value = line.strip().partition("=")
+                if sep and value in VALID.get(key, ()):
+                    conf[key] = value
+    except OSError:
+        pass
+    return conf
+
+
+def write_conf(conf):
+    os.makedirs(os.path.dirname(CONF), exist_ok=True)
+    tmp = CONF + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write("# Written by Cinemosk; read by mpv when a film starts.\n")
+        for key, _values, _default in CONTRACT:
+            f.write(f"{key}={conf[key]}\n")
+    os.replace(tmp, CONF)
+
+
+def folder_overrides():
+    try:
+        with open(OVERRIDES, encoding="utf-8") as f:
+            data = json.load(f)
+        return len(data) if isinstance(data, dict) else 0
+    except (OSError, ValueError):
+        return 0
+
+
+def videos_folder():
+    start = GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_VIDEOS)
+    return Gio.File.new_for_path(start) if start and os.path.isdir(start) else None
+
+
+def launcher_message(log):
+    """The disc launcher's last message ("cinemosk-play: ..."), from the error output it left in log."""
+    try:
+        log.seek(max(0, os.fstat(log.fileno()).st_size - 16384))
+        lines = log.read().decode("utf-8", "replace").splitlines()
+    except (OSError, ValueError):
+        return ""
+    for line in reversed(lines):
+        if line.startswith("cinemosk-play: "):
+            return line[len("cinemosk-play: "):].strip()
+    return ""
+
+
+class Window(Adw.ApplicationWindow):
+    def __init__(self, app):
+        super().__init__(application=app, title="Cinemosk")
+        self.set_default_size(700, 940)
+        self.conf = read_conf()
+        self.checks = {}    # (key, value) -> its radio button
+        self.switches = {}  # key -> its switch row
+        self.toasts = Adw.ToastOverlay()
+        view = Adw.ToolbarView()
+        view.add_top_bar(Adw.HeaderBar())
+        page = Adw.PreferencesPage()
+        page.set_description(
+            "How films and TV look and move on your screen. Beside each choice is what it cost when we measured it: "
+            "dropped frames a minute, and how much of the GPU it used. The recommended choice leaves the most room "
+            "for the desktop while a film plays. Changes apply to the next film you open.")
+        for key, title, desc, choices in CASES:
+            page.add(self.case_group(key, title, desc, choices))
+        page.add(self.colour_group())
+        page.add(self.dvd_group())
+        page.add(self.motion_group())
+        page.add(self.folders_group())
+        page.add(self.play_group())
+        page.add(self.discs_group())
+        foot = Adw.PreferencesGroup()
+        note = Gtk.Label(label=f"Measured {MEASURED_ON}. Your own film's numbers depend on its source: press Alt+M "
+                               "while it plays to see them.", wrap=True, xalign=0)
+        note.add_css_class("dim-label")
+        note.add_css_class("caption")
+        foot.add(note)
+        page.add(foot)
+        view.set_content(page)
+        self.toasts.set_child(view)
+        self.set_content(self.toasts)
+
+    def say(self, text, timeout=3):
+        self.toasts.add_toast(Adw.Toast(title=text, timeout=timeout, use_markup=False))
+
+    def radio_row(self, title, subtitle, leader, key, value, recommended):
+        row = Adw.ActionRow(title=title, use_markup=False)
+        row.set_subtitle(subtitle)
+        row.set_subtitle_lines(0)
+        check = Gtk.CheckButton(valign=Gtk.Align.CENTER)
+        if leader:
+            check.set_group(leader)
+        check.set_active(self.conf[key] == value)
+        check.connect("toggled", self.on_toggled, key, value, title)
+        row.add_prefix(check)
+        row.set_activatable_widget(check)
+        if recommended:
+            tag = Gtk.Label(label="Recommended", valign=Gtk.Align.CENTER)
+            tag.add_css_class("accent")
+            tag.add_css_class("caption-heading")
+            row.add_suffix(tag)
+        self.checks[key, value] = check
+        return row, check
+
+    def case_group(self, key, title, desc, choices):
+        group = Adw.PreferencesGroup(title=title, description=desc)
+        measured = [c for c in choices if c[4] is not None and c[5] is not None]
+        best = min(measured, key=lambda c: (c[4], c[5]))[0] if measured else None
+        leader = None
+        for ckey, name, look, filt, drops, used in choices:
+            row, check = self.radio_row(name, f"{look} · {filt}\n{choice_cost(drops, used)}",
+                                        leader, key, ckey, ckey == best)
+            leader = leader or check
+            group.add(row)
+        return group
+
+    def colour_group(self):
+        group = Adw.PreferencesGroup(
+            title="Colour for DVDs and standard-definition TV",
+            description="Older video uses a slightly smaller colour range than HD. mpv's default conversion for it "
+                        "doubled the GPU load in our tests; clipping looks the same on ordinary pictures.")
+        leader = None
+        for ckey, name, how, cost, rec in SD_COLOUR:
+            row, check = self.radio_row(name, f"{how}\n{cost}", leader, "sd_colour", ckey, rec)
+            leader = leader or check
+            group.add(row)
+        return group
+
+    def switch_row(self, key):
+        title, short, what, on, off = SWITCHES[key]
+        row = Adw.SwitchRow(title=title, use_markup=False)
+        row.set_subtitle(f"{what}\n{cost_line(SWITCH_COST.get(key))}")
+        row.set_subtitle_lines(0)
+        row.set_active(self.conf[key] == on)
+        row.connect("notify::active", self.on_switched, key, on, off, short)
+        self.switches[key] = row
+        return row
+
+    def dvd_group(self):
+        group = Adw.PreferencesGroup(title="DVD picture")
+        group.add(self.switch_row("deband_sd"))
+        group.add(self.switch_row("fill"))
+        return group
+
+    def motion_group(self):
+        group = Adw.PreferencesGroup(title="Film motion")
+        group.add(self.switch_row("even_film"))
+        row = Adw.ActionRow(title="Which refresh rate to use", use_markup=False)
+        row.set_subtitle(MOTION_NOTE)
+        row.set_subtitle_lines(0)
+        group.add(row)
+        return group
+
+    def folders_group(self):
+        group = Adw.PreferencesGroup(title="Folders with their own setting")
+        self.folders_row = Adw.ActionRow(use_markup=False)
+        self.folders_row.set_subtitle_lines(0)
+        self.reset_button = Gtk.Button(label="Reset", valign=Gtk.Align.CENTER)
+        self.reset_button.connect("clicked", self.on_reset_folders)
+        self.folders_row.add_suffix(self.reset_button)
+        self.update_folders_row()
+        group.add(self.folders_row)
+        return group
+
+    def update_folders_row(self):
+        n = folder_overrides()
+        self.folders_row.set_title("No folders have their own setting" if n == 0 else
+                                   "1 folder has its own setting" if n == 1 else f"{n} folders have their own setting")
+        self.folders_row.set_subtitle("Alt+C while a film plays gives its folder its own choice, which takes "
+                                      "priority over the settings above.")
+        self.reset_button.set_sensitive(n > 0)
+
+    def button_row(self, title, subtitle, label, handler, suggested=False):
+        row = Adw.ActionRow(title=title, use_markup=False)
+        row.set_subtitle(subtitle)
+        row.set_subtitle_lines(0)
+        button = Gtk.Button(label=label, valign=Gtk.Align.CENTER)
+        if suggested:
+            button.add_css_class("suggested-action")
+        button.connect("clicked", handler)
+        row.add_suffix(button)
+        return row
+
+    def play_group(self):
+        group = Adw.PreferencesGroup(title="Play")
+        group.add(self.button_row(
+            "Open a film", "Plays in mpv with the choices above. While it plays: Alt+C changes the picture for that "
+                           "folder, Alt+M shows dropped frames and GPU use.", "Open…", self.on_open, suggested=True))
+        group.add(self.button_row(
+            "Play a DVD or Blu-ray folder", "Choose a folder that holds a copied DVD or Blu-ray. Cinemosk finds the "
+                                            "disc inside and plays it full screen.", "Play…", self.on_play_disc))
+        self.drive_row = self.button_row(
+            "Play the disc in the drive", "A DVD or Blu-ray in the connected drive plays full screen. Bought DVDs are "
+                                          "encrypted: the first time, Plaid Pi offers to build the decryption library "
+                                          "on this computer (it is not included).", "Play", self.on_play_drive)
+        group.add(self.drive_row)
+        self.drive_row.set_visible(bool(glob.glob("/sys/block/sr*")))   # shown while an optical drive is connected
+        return group
+
+    def discs_group(self):
+        self.installing = None   # one install at a time: the helper takes a lock, so the buttons wait too
+        group = Adw.PreferencesGroup(
+            title="Disc support",
+            description="Two extras Plaid Pi cannot include. Each is downloaded and set up on this computer when you ask.")
+        self.install_rows = {}
+        self.add_install_row(
+            group, "dvdcss", "DVD decryption library",
+            "Bought DVDs are encrypted. This builds the library that reads them (libdvdcss) on this computer: "
+            "Ubuntu's libdvd-pkg downloads the source and compiles it.", dvdcss_installed)
+        self.add_install_row(
+            group, "bdj", "Java for Blu-ray menus",
+            "Some Blu-ray menus are written in Java. This adds Java 21 and the Blu-ray menu module (about 45 MB "
+            "of packages). Bought Blu-rays stay encrypted; Plaid Pi cannot decrypt them.", bdj_installed)
+        return group
+
+    def add_install_row(self, group, what, title, subtitle, installed):
+        row = Adw.ActionRow(title=title, use_markup=False)
+        row.set_subtitle(subtitle)
+        row.set_subtitle_lines(0)
+        button = Gtk.Button(valign=Gtk.Align.CENTER)
+        button.connect("clicked", self.on_install, what)
+        row.add_suffix(button)
+        group.add(row)
+        self.install_rows[what] = (button, installed, title)
+        self.update_install_row(what)
+
+    def update_install_row(self, what):
+        button, installed, _title = self.install_rows[what]
+        if self.installing == what:
+            button.set_label("Installing…")
+            button.set_sensitive(False)
+        elif installed():
+            button.set_label("Installed")
+            button.set_sensitive(False)
+        else:
+            button.set_label("Install")
+            button.set_sensitive(self.installing is None)
+
+    def refresh_disc_rows(self):
+        """A drive plugged in later, or a library installed by the disc launcher, shows the next time the window opens."""
+        self.drive_row.set_visible(bool(glob.glob("/sys/block/sr*")))
+        for what in self.install_rows:
+            self.update_install_row(what)
+
+    def on_install(self, _button, what):
+        title = self.install_rows[what][2]
+        try:
+            proc = Gio.Subprocess.new(["pkexec", INSTALLER, what],
+                                      Gio.SubprocessFlags.STDOUT_SILENCE | Gio.SubprocessFlags.STDERR_SILENCE)
+        except GLib.Error as err:
+            self.say(f"Could not start the installer: {err.message}", 5)
+            return
+        self.installing = what
+        for each in self.install_rows:
+            self.update_install_row(each)
+        self.say(f"{title}: enter your password when asked (the window can open behind this one). "
+                 "Installing can take a while.", 6)
+        proc.wait_async(None, self.on_install_done, what)
+
+    def on_install_done(self, proc, result, what):
+        try:
+            proc.wait_finish(result)
+        except GLib.Error:
+            pass
+        _button, installed, title = self.install_rows[what]
+        self.installing = None
+        for each in self.install_rows:
+            self.update_install_row(each)
+        status = proc.get_exit_status() if proc.get_if_exited() else -1
+        if installed():
+            self.say(f"{title}: installed.")
+        elif status == 126:
+            return   # the password prompt was dismissed
+        elif status == 127:
+            self.say(f"{title}: not installed. The password could not be checked (not authorized, or no password prompt).", 6)
+        elif status == 3:
+            self.say(f"{title}: another install is running. Try again when it has finished.", 6)
+        else:
+            extra = " The build log is in /usr/src/libdvd-pkg/." if what == "dvdcss" else ""
+            self.say(f"{title}: not installed. Details are in /var/log/pidesktop-install-app.log.{extra}", 8)
+
+    def save(self, key, value, done):
+        if self.conf[key] == value:
+            return
+        self.conf[key] = value
+        try:
+            write_conf(self.conf)
+            self.say(f"{done} The next film you open uses it.")
+        except OSError as err:
+            self.say(f"Could not save: {err.strerror}", 5)
+
+    def on_toggled(self, check, key, value, title):
+        if check.get_active():
+            self.save(key, value, f"{title} saved.")
+
+    def on_switched(self, row, _pspec, key, on, off, short):
+        active = row.get_active()
+        self.save(key, on if active else off, f"{short}: {'on' if active else 'off'}.")
+
+    def on_reset_folders(self, _button):
+        try:
+            os.makedirs(os.path.dirname(OVERRIDES), exist_ok=True)
+            with open(OVERRIDES, "w", encoding="utf-8") as f:
+                f.write("{}")
+            self.say("Every folder follows the settings above again.")
+        except OSError as err:
+            self.say(f"Could not reset: {err.strerror}", 5)
+        self.update_folders_row()
+
+    def on_open(self, _button):
+        dialog = Gtk.FileDialog(title="Open a film")
+        videos = Gtk.FileFilter(name="Videos")
+        videos.add_mime_type("video/*")
+        filters = Gio.ListStore.new(Gtk.FileFilter)
+        filters.append(videos)
+        dialog.set_filters(filters)
+        start = videos_folder()
+        if start:
+            dialog.set_initial_folder(start)
+        dialog.open(self, None, self.on_opened)
+
+    def on_opened(self, dialog, result):
+        try:
+            gfile = dialog.open_finish(result)
+        except GLib.Error:
+            return
+        target = gfile.get_path() or gfile.get_uri()
+        try:
+            Gio.Subprocess.new(["mpv", "--player-operation-mode=pseudo-gui", "--", target], Gio.SubprocessFlags.NONE)
+        except GLib.Error as err:
+            self.say(f"Could not start mpv: {err.message}", 5)
+
+    def on_play_drive(self, _button):
+        self.play_disc("--disc")
+
+    def on_play_disc(self, _button):
+        dialog = Gtk.FileDialog(title="Play a DVD or Blu-ray folder", accept_label="Play")
+        start = videos_folder()
+        if start:
+            dialog.set_initial_folder(start)
+        dialog.select_folder(self, None, self.on_disc_folder)
+
+    def on_disc_folder(self, dialog, result):
+        try:
+            gfile = dialog.select_folder_finish(result)
+        except GLib.Error:
+            return
+        folder = gfile.get_path()
+        if folder:
+            self.play_disc(folder)
+        else:
+            self.say("Choose a folder on this computer or on a mounted network share.", 5)
+
+    def play_disc(self, folder):
+        # The launcher finds the disc and execs mpv full screen, so it exits when the film ends. Its error output goes
+        # to an unnamed file rather than a pipe: mpv keeps writing safely even after this window closes.
+        name = "the disc" if folder == "--disc" else (os.path.basename(folder.rstrip("/")) or folder)
+        try:
+            log = tempfile.TemporaryFile(dir=GLib.get_user_runtime_dir())
+        except OSError:
+            log = None
+        launcher = Gio.SubprocessLauncher.new(Gio.SubprocessFlags.NONE)
+        launcher.setenv("CINEMOSK_PLAY_QUIET", "1", True)   # the launcher's own notification would repeat our toast
+        try:
+            if log:
+                launcher.take_stderr_fd(os.dup(log.fileno()))
+            proc = launcher.spawnv([PLAY_DISC, folder])
+        except GLib.Error as err:
+            if log:
+                log.close()
+            self.say(f"Could not start the disc player: {err.message}", 5)
+            return
+        finally:
+            launcher.close()
+        proc.wait_async(None, self.on_disc_done, (log, name))
+
+    def on_disc_done(self, proc, result, data):
+        log, name = data
+        try:
+            proc.wait_finish(result)
+        except GLib.Error:
+            pass
+        message = launcher_message(log) if log else ""
+        if log:
+            log.close()
+        # 0 = played; 4 = mpv was quit with Ctrl+C or a signal it handles, which is the viewer's choice, not an error
+        if proc.get_if_exited() and proc.get_exit_status() in (0, 4):
+            return
+        self.say(message or f"mpv could not play “{name}”.", 6)
+
+
+class App(Adw.Application):
+    def __init__(self):
+        super().__init__(application_id=APP_ID, flags=Gio.ApplicationFlags.DEFAULT_FLAGS)
+
+    def do_activate(self):
+        win = self.props.active_window or Window(self)
+        win.update_folders_row()
+        win.refresh_disc_rows()
+        win.present()
+
+
+if __name__ == "__main__":
+    raise SystemExit(App().run(None))

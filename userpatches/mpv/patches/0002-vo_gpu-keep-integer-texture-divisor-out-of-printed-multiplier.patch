@@ -21,10 +21,10 @@ Forwarded: not-yet
 Last-Update: 2026-10-09
 ---
 diff --git a/video/out/gpu/video.c b/video/out/gpu/video.c
-index eabf917..2ced328 100644
+index 6122e51..781bfe0 100644
 --- a/video/out/gpu/video.c
 +++ b/video/out/gpu/video.c
-@@ -1429,13 +1429,17 @@ static void copy_image(struct gl_video *p, unsigned int *offset, struct image im
+@@ -1437,13 +1437,17 @@ static void copy_image(struct gl_video *p, unsigned int *offset, struct image im
          dst[i] = dst_fmt[*offset + i];
      }
  

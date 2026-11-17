@@ -1,0 +1,167 @@
+#!/bin/bash
+# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 defcom5-rockchip
+# cinemosk-play — play a DVD or Blu-ray in mpv, full screen (Plaid Pi, Cinemosk): a folder copy, or the disc in a drive.
+# Folder copies: give it the film's folder at any level (the folder the disc was copied into, a FullDisc/<TITLE> layout, the
+# VIDEO_TS or BDMV folder itself) or a VIDEO_TS.IFO file. It looks up to four folders down, skips NAS recycle bins and
+# folders that hold only IFO files, and plays every disc it finds in name order (Disc 1, Disc 2, ...). mpv picks the longest title.
+# Discs in a drive: --disc [device] (default: the first optical drive with a DVD or Blu-ray in it), a /dev/sr* device, a
+# dvd:// or bd:// address, or the folder where the desktop mounted a video disc (Dolphin's Devices panel). The disc is
+# played through the drive, so an encrypted DVD can be decrypted, and it starts in the disc's own menu (mpv 0.42: arrows,
+# Enter and the mouse drive the menu; Ctrl+M returns to it). --no-menu starts the longest title instead, as folder copies
+# do. The drive goes into each disc's own address (dvd://menu//dev/sr0), so nothing carries over to other items. A data
+# disc (DVD-R, BD-R with folder copies on it) is searched like any other folder; an audio CD or a blank disc gets a message.
+# Commercial DVDs need libdvdcss, which Plaid Pi does not ship: the first time, this offers to build it on this computer
+# (Ubuntu's libdvd-pkg does the download and the build), like the first click on Chrome. "Not Now" is remembered; Cinemosk >
+# Disc support installs it later. Blu-ray menus: plain (HDMV) menus need nothing extra; menus written in Java (BD-J) need the
+# BD-J module and Java 21 (Cinemosk > Disc support), because libbluray 1.4's BD-J sets a Java security manager, which Java 24
+# and later refuse. Without them mpv plays such a disc's film without its menu. A burned disc in a drive is looked at first
+# (mounted the way the file manager mounts it): a data disc is searched for folder copies instead of being played as video.
+# Anything that is neither a disc nor a folder copy is handed to mpv unchanged.   --dry-run  print what would play instead.
+# CINEMOSK_PLAY_QUIET=1 (set by the Cinemosk app, which shows the message itself): no desktop notification.
+set -u
+DRY=0; MENU=1; args=()
+for a in "$@"; do case $a in --dry-run) DRY=1 ;; --no-menu) MENU=0 ;; *) args+=("$a") ;; esac; done   # anywhere on the line
+set -- "${args[@]}"
+MAXDISCS=8
+DVDCSS_INSTALLER=/usr/local/sbin/pidesktop-install-app
+BDJ_JAVA=/usr/lib/jvm/java-21-openjdk-arm64
+DECLINED=${XDG_CACHE_HOME:-${HOME:-/nonexistent}/.cache}/cinemosk/dvdcss-not-now
+WAITS=${CINEMOSK_DISC_WAIT:-4}   # rounds of about 2-4 s while a drive still reports no disc (spin-up after inserting one)
+[[ $WAITS =~ ^[0-9]{1,2}$ ]] && WAITS=$((10#$WAITS)) || WAITS=4
+tell(){ if [ $DRY = 0 ] && [ -z "${CINEMOSK_PLAY_QUIET:-}" ] && command -v notify-send >/dev/null && [ -n "${WAYLAND_DISPLAY:-}${DISPLAY:-}" ]; then
+          # the notification body is Pango markup on GNOME: escape the three characters a folder name can carry
+          local m="$*"; m=${m//&/&amp;}; m=${m//</&lt;}; m=${m//>/&gt;}
+          notify-send -a Cinemosk -i cinemosk Cinemosk "$m" 2>/dev/null; fi; echo "cinemosk-play: $*" >&2; }
+# a disc root = a folder with VIDEO_TS.IFO and at least one title VOB, or a BDMV folder with MovieObject.bdmv
+is_disc(){ [ -n "$(find "$1" -maxdepth 1 -type f -iname 'MovieObject.bdmv' -print -quit 2>/dev/null)" ] ||
+           { [ -n "$(find "$1" -maxdepth 1 -type f -iname 'VIDEO_TS.IFO' -print -quit 2>/dev/null)" ] &&
+             [ -n "$(find "$1" -maxdepth 1 -type f -iname 'VTS_*_1.VOB' -print -quit 2>/dev/null)" ]; }; }
+# disc roots under $1 at the shallowest depth that has any (searching one level at a time keeps big shares quick)
+find_discs(){ local d r out
+  for d in 1 2 3 4; do
+    out=$(find "$1" -maxdepth $d \( -iname '#recycle' -o -iname '@eaDir' -o -iname '#snapshot' -o -iname '.Trash*' \
+            -o -ipath '*/BDMV/BACKUP' \) -prune -o -type f \( -iname 'VIDEO_TS.IFO' -o -iname 'MovieObject.bdmv' \) \
+            -printf '%h\n' 2>/dev/null | sort -V -u |
+          while IFS= read -r r; do is_disc "$r" && printf '%s\n' "$r"; done)
+    [ -n "$out" ] && { printf '%s\n' "$out"; return 0; }
+  done
+  return 1; }
+
+# ---- discs in a drive (udev's view of the drive needs no root)
+disc_device_of(){ local src; src=$(findmnt -no SOURCE -T "$1" 2>/dev/null | head -n 1); [[ $src == /dev/sr* ]] && printf '%s' "$src"; }
+# udev names the medium after its profile: ID_CDROM_MEDIA_BD (BD-ROM), _BD_R, _BD_RE ...; _DVD, _DVD_R, _DVD_PLUS_R ...
+disc_kind(){ local p; p=$(udevadm info --query=property "$1" 2>/dev/null)   # bd | dvd | blank | other | none
+  grep -q '^ID_CDROM_MEDIA=1$' <<<"$p" || { echo none; return; }
+  if   grep -q '^ID_CDROM_MEDIA_STATE=blank$' <<<"$p"; then echo blank
+  elif grep -q '^ID_CDROM_MEDIA_BD[A-Z_]*=1$' <<<"$p"; then echo bd
+  elif grep -q '^ID_CDROM_MEDIA_DVD[A-Z_]*=1$' <<<"$p"; then echo dvd
+  else echo other; fi; }
+# the first drive with a DVD or Blu-ray in it; while a drive still reports no disc, wait a few rounds (a disc that was just
+# put in shows up after the drive spins up and the kernel's 2-second media poll)
+first_disc_drive(){ local d k i wait
+  for ((i = 0; i <= WAITS; i++)); do wait=0
+    for d in /dev/sr[0-9]*; do [ -b "$d" ] || continue
+      k=$(disc_kind "$d"); case $k in dvd|bd) printf '%s' "$d"; return 0 ;; none) wait=1 ;; esac; done
+    [ $wait = 1 ] && [ $i -lt "$WAITS" ] || return 1
+    udevadm settle -t 2 >/dev/null 2>&1; sleep 2
+  done; return 1; }
+# why --disc found nothing, in words
+no_disc_reason(){ local d k msg="No optical drive found."
+  for d in /dev/sr[0-9]*; do [ -b "$d" ] || continue; k=$(disc_kind "$d")
+    case $k in other) msg="The disc in $d is not a DVD or Blu-ray video disc (an audio CD or a data disc?). Open its files in the file manager."; break ;;
+               blank) msg="The disc in $d is blank." ;;
+               *) [ "$msg" = "No optical drive found." ] && msg="No disc found in a drive." ;; esac; done
+  printf '%s' "$msg"; }
+# a video disc mounted by the desktop: VIDEO_TS/VIDEO_TS.IFO or BDMV/index.bdmv at the top of the mount
+is_video_disc_root(){ [ -n "$(find "$1" -mindepth 2 -maxdepth 2 \( -ipath '*/VIDEO_TS/VIDEO_TS.IFO' -o -ipath '*/BDMV/index.bdmv' \) -print -quit 2>/dev/null)" ]; }
+bdj_module(){ compgen -G '/usr/share/java/libbluray-j2se-*.jar' >/dev/null; }
+bdj_ready(){ bdj_module && [ -e "$BDJ_JAVA/lib/server/libjvm.so" ]; }
+# A burned disc (DVD±R/RW, DVD-RAM, BD-R/RE) can hold a film or just files. Look at it, mounting it the way the file manager
+# does (udisks, no password) if needed: "video", "data:<mount>" or "unknown". Pressed discs (DVD-ROM, BD-ROM) count as video.
+disc_content(){ local dev=$1 p mnt
+  p=$(udevadm info --query=property "$dev" 2>/dev/null)
+  grep -q -E '^ID_CDROM_MEDIA_(DVD_R|DVD_RW|DVD_PLUS_R|DVD_PLUS_RW|DVD_RAM|BD_R|BD_RE)[A-Z_]*=1$' <<<"$p" || { echo video; return; }
+  mnt=$(findmnt -no TARGET -S "$dev" 2>/dev/null | head -n 1)
+  if [ -z "$mnt" ] && [ $DRY = 0 ] && command -v udisksctl >/dev/null; then
+    udisksctl mount -b "$dev" --no-user-interaction >/dev/null 2>&1; mnt=$(findmnt -no TARGET -S "$dev" 2>/dev/null | head -n 1); fi
+  [ -n "$mnt" ] || { echo unknown; return; }
+  if is_video_disc_root "$mnt"; then echo video; else printf 'data:%s' "$mnt"; fi; }
+have_dvdcss(){ ldconfig -p 2>/dev/null | grep -q 'libdvdcss\.so\.2'; }
+# The same offer as the first-click app installers (pidesktop-get): a question, the password prompt, a progress window.
+# 0 = libdvdcss is installed now; 1 = declined, dismissed or failed (the error dialog says so unless the prompt was dismissed).
+offer_dvdcss(){
+  [ $DRY = 1 ] && return 1
+  [ -e "$DECLINED" ] && return 1   # "Not Now" was answered before; Cinemosk > Disc support still offers it
+  command -v zenity >/dev/null && command -v pkexec >/dev/null && [ -x "$DVDCSS_INSTALLER" ] || return 1
+  local q=0
+  zenity --question --title="Cinemosk" --icon=cinemosk --width=460 --ok-label="Install" --cancel-label="Not Now" \
+    --text="Commercial DVDs are encrypted, and the library that reads them (libdvdcss) isn't included in Plaid Pi.\n\nIt can be built on this computer now: Ubuntu's libdvd-pkg downloads the libdvdcss source and compiles it here. It then stays installed. You will be asked for your password." \
+    || q=$?
+  if [ $q -ne 0 ]; then   # remembered only when "Not Now" was chosen (1), not on a timeout or a zenity error
+    [ $q -eq 1 ] && { mkdir -p "${DECLINED%/*}" 2>/dev/null && : > "$DECLINED"; }; return 1; fi
+  pkexec "$DVDCSS_INSTALLER" dvdcss 2>&1 | sed -u 's/^\(.\{0,64\}\).*/# \1/' | {
+    IFS= read -r first || exit 0
+    case $first in *"Error executing command as another user"*) cat >/dev/null; exit 0 ;; esac
+    { printf '%s\n' "$first"; cat; } |
+      zenity --progress --pulsate --auto-close --no-cancel --title="Cinemosk" --width=460 --text="Starting…"
+  }
+  local rc=${PIPESTATUS[0]}
+  have_dvdcss && return 0
+  [ "$rc" -eq 126 ] && return 1   # password dialog dismissed
+  case $rc in 3) zenity --error --title="Cinemosk" --width=460 --text="Another install is running. Try again when it has finished." 2>/dev/null ;;
+    127) zenity --error --title="Cinemosk" --width=460 --text="The DVD library was not installed: the password could not be checked (not authorized, or no password prompt)." 2>/dev/null ;;
+    *) zenity --error --title="Cinemosk" --width=460 --text="The DVD library was not installed. Details: /var/log/pidesktop-install-app.log (the build log is in /usr/src/libdvd-pkg/)." 2>/dev/null ;; esac
+  return 1
+}
+# queue the disc in device $1 (its address carries the drive: dvd://menu//dev/sr0); 1 = nothing to play
+queue_drive(){ local dev=$1 kind c; kind=$(disc_kind "$dev")
+  case $kind in
+    none)  tell "No disc in the drive ($dev)."; return 1 ;;
+    blank) tell "The disc in $dev is blank."; return 1 ;;
+    other) tell "The disc in $dev is not a DVD or Blu-ray video disc (an audio CD or a data disc?). Open its files in the file manager."; return 1 ;;
+  esac
+  c=$(disc_content "$dev")
+  case $c in data:*) queue_folder "${c#data:}"; return ;; esac   # files, not a film: look for folder copies on it
+  case $kind in
+    bd)    # Menus by default: plain menus need nothing, and mpv plays the film without a Java menu it cannot run, unless the
+           # BD-J module is installed without Java 21 (it would claim the menu and fail): then the longest title. Not tested
+           # with a disc yet.
+           if [ $MENU = 1 ] && { ! bdj_module || bdj_ready; }; then bdj_ready && export JAVA_HOME=$BDJ_JAVA; items+=("bd://menu/$dev")
+           else items+=("bd://longest/$dev"); fi ;;
+    dvd)   if ! have_dvdcss && ! offer_dvdcss; then tell "Playing without the DVD decryption library: a home-made DVD plays, a bought one will not (Cinemosk > Disc support installs it)."; fi
+           if [ $MENU = 1 ]; then items+=("dvd://menu/$dev"); else items+=("dvd://longest/$dev"); fi ;;
+  esac; }
+# queue the folder copies in folder $1 (the desktop's mount of a video disc goes to the drive instead)
+queue_folder(){ local a=$1 dev name found
+  dev=$(disc_device_of "$a")
+  if [ -n "$dev" ] && is_video_disc_root "$(findmnt -no TARGET -T "$a" 2>/dev/null | head -n 1)"; then queue_drive "$dev"; return; fi
+  mapfile -t found < <(find_discs "$a")
+  name=$(basename "$a")
+  if [ ${#found[@]} -eq 0 ]; then tell "No DVD or Blu-ray copy found in “$name”."; return 1; fi
+  if [ ${#found[@]} -gt $MAXDISCS ]; then tell "“$name” holds ${#found[@]} discs. Open one film's folder instead."; return 1; fi
+  items+=("${found[@]}"); }
+
+items=()
+while [ $# -gt 0 ]; do a=$1; shift
+  case $a in
+    --disc) if [[ ${1:-} == /dev/* ]]; then dev=$1; shift; else dev=$(first_disc_drive) || { tell "$(no_disc_reason)"; continue; }; fi
+            queue_drive "$dev"; continue ;;
+    dvd://*|dvdnav://*) [ $DRY = 0 ] && ! have_dvdcss && offer_dvdcss >/dev/null; items+=("$a"); continue ;;
+    bd://*|bluray://*) items+=("$a"); continue ;;
+  esac
+  if [ -b "$a" ]; then queue_drive "$a"; continue; fi
+  if [ -d "$a" ]; then
+    queue_folder "$a"   # a video disc mounted by the desktop is played through the drive (menus, decryption)
+  elif [ -f "$a" ]; then
+    b=$(basename "$a"); d=$(dirname "$a")
+    if [[ "${b,,}" == video_ts.ifo ]] && is_disc "$d"; then items+=("$d"); else items+=("$a"); fi
+  else
+    tell "Not found: $a"
+  fi
+done
+[ ${#items[@]} -gt 0 ] || exit 1
+if [ ${#items[@]} -gt $MAXDISCS ]; then tell "${#items[@]} discs selected. Open one film's folder instead."; exit 1; fi   # the per-folder cap above, applied to the whole selection
+if [ $DRY = 1 ]; then [ -n "${JAVA_HOME:-}" ] && printf 'with: JAVA_HOME=%s\n' "$JAVA_HOME"; [ $MENU = 0 ] && printf 'with: --disc-menu=no\n'; printf 'play: %s\n' "${items[@]}"; exit 0; fi
+NOMENU=(); [ $MENU = 0 ] && NOMENU=(--disc-menu=no)   # --no-menu wins over a disc-menu=yes in the user's mpv.conf
+exec mpv --player-operation-mode=pseudo-gui --fs "${NOMENU[@]}" -- "${items[@]}"

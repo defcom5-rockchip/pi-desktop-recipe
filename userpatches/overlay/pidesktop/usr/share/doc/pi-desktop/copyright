@@ -10,15 +10,17 @@ Comment:
  What Plaid Pi adds to the image, and the licence of each part:
  .
   * Plaid Pi's own programs and scripts (/usr/local/bin/pidesktop-*, /usr/local/sbin/pidesktop-*,
+    Cinemosk, the picture-settings app (/usr/local/bin/cinemosk) with its mpv script (/etc/mpv/scripts/pidesktop-cinema.lua)
+    and disc launcher (/usr/local/bin/cinemosk-play),
     the two Files add-ons, the Network Drive window and its root helper, the Widevine pointers
     (/etc/chromium.d/pidesktop-widevine and the Firefox launcher's MOZ_GMP_PATH, 6.0: point Chromium and Firefox at Chrome's
     own Widevine; nothing copied), systemd units, configuration):
     GPL-3.0-or-later.
   * Plaid Pi's artwork (the Plaid wallpaper, the penguin screensaver clip and still, the tartan
-    terminal logo, the pi-desktop logo and the installer icons): CC BY-SA 4.0.
+    terminal logo, the pi-desktop logo, the installer icons and the Cinemosk icon): CC BY-SA 4.0.
   * Kernel: Armbian's linux-rockchip branch rk-6.1-rkr7.2 at commit 44bbd021d7808cab93d1f2d64c1f092038257576,
-    merged with upstream stable Linux 6.1.189, with the Plaid Pi patches (GPL-2.0). Complete source:
-    https://github.com/defcom5-rockchip/linux-rockchip tag pi-desktop-5.0, and the patches in the recipe
+    merged with upstream stable Linux 6.1.191, with the Plaid Pi patches (GPL-2.0). Complete source:
+    https://github.com/defcom5-rockchip/linux-rockchip tag pi-desktop-6.5, and the patches in the recipe
     repository (userpatches/kernel/).
   * Boot loader: Armbian's build of radxa/u-boot branch next-dev-v2024.10 commit 39cd993e5d6296635438e84f4576b3a9bf76f86e,
     unmodified (GPL-2.0+), with Rockchip's binary boot blobs (rkbin, Rockchip's licence).
@@ -26,10 +28,13 @@ Comment:
     Rhythmbox 3.5.1, PipeWire 1.6.10 / WirePlumber 0.5.18 (upstream PipeWire 1.6.10 on Debian's 1.6.9-2
     packaging, Debian's WirePlumber 0.5.18-1, rebuilt as ~pd55), rockchip-vaapi 4.0.0 (https://github.com/defcom5-rockchip/rockchip-vaapi),
     librockchip-mpp +pd35 (nine Plaid Pi patches: AV1 deferred refresh, the VP9 frame-label wrap of
-    rockchip-linux/mpp PR #976, and AV1 film grain from rockchip-linux/mpp issue #974; Apache-2.0), librga (rebuilt for 26.04), the libmali-hook shim, gst-plugins-good
-    (+pd1, one upstream FLAC fix), and mpv (Ubuntu's mpv 0.41.0-2ubuntu4 rebuilt with two patches and Plaid Pi's
-    mpv.conf as +pd3; GPL-3.0+ as linked). Complete source for mpv, gst-plugins-good, librockchip-mpp, PipeWire and WirePlumber is
-    published with each Plaid Pi release next to the image, and the patches and build scripts are in the recipe repository (mpv/, gst-plugins-good/).
+    rockchip-linux/mpp PR #976, and AV1 film grain from rockchip-linux/mpp issue #974; Apache-2.0), librga (rebuilt for 26.04), the libmali-hook shim,
+    GStreamer 1.28.9 (core, base, good, bad, ugly, libav: upstream 1.28.9 on Ubuntu 26.04's 1.28.2 packaging, rebuilt as
+    1.28.9-0ubuntu0~pd1; LGPL-2.1+, some plugins GPL), and mpv 0.42.0 (Ubuntu 26.04's mpv packaging, rebuilt with two
+    patches, DVD-Audio enabled and Plaid Pi's mpv.conf as 0.42.0-1~pd4; GPL-3.0+ as linked) with libplacebo 7.387.0
+    (Debian's packaging, ~pd2; LGPL-2.1+) and libdvdread 7.1.1 (Debian's packaging, ~pd1; GPL-2.0+). Complete source for
+    mpv, libplacebo, libdvdread, GStreamer, librockchip-mpp, PipeWire and WirePlumber is published with each Plaid Pi
+    release next to the image, and the patches and build scripts are in the recipe repository.
   * Pro Updates 1.5.0, the update window (pro-updates, pro-updates-gui and its root helper): GPL-3.0-or-later,
     by the Plaid Pi maintainer. Source: https://github.com/defcom5-rockchip/pro-updates tag v1.5.0; licence
     details in /usr/share/doc/pro-updates/copyright.

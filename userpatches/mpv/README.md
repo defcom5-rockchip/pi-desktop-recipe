@@ -1,5 +1,14 @@
 # mpv for Pi-Desktop
 
+**Plaid Pi 6.5 ships mpv `0.42.0-1~pd4`** (packages `mpv`, `libmpv2`) with libplacebo `7.387.0-1~pd2` and libdvdread
+`7.1.1-1~pd1`, built by `userpatches/backports-2026-11/run-backports.sh` from the source packages in that folder:
+Ubuntu 26.04's mpv packaging on the upstream 0.42.0 tarball, the two patches below refreshed with exact context,
+DVD-Audio enabled (`dvda://`), the native PipeWire audio output built in, and this folder's `mpv.conf` as the
+packaged conffile (`ao=pipewire,alsa`, `vd-lavc-film-grain=cpu`, the `[pidesktop-kde]` profile). mpv 0.42 opens DVD
+and Blu-ray folder copies (VIDEO_TS, BDMV) in place; the image's `cinemosk-play` and the mpv script
+`pidesktop-cinema.lua` build on that. The image holds `mpv` and `libmpv2`. The text below is the 4.5–6.0 record
+(`build-mpv-deb.sh` builds the 0.41 `+pd2` packages); the patches are the same files.
+
 Pi-Desktop 4.5 ships Ubuntu 26.04's mpv source package `0.41.0-2ubuntu4` rebuilt with two patches as
 `0.41.0-2ubuntu4+pd2` (binary packages `mpv`, `libmpv2`; `libmpv-dev` is built too). It links Ubuntu's libplacebo
 (`libplacebo360`) like Ubuntu's own build.

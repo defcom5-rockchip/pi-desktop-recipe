@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Plaid Pi / Cinemosk: VIDEO_TS.IFO starts a DVD-Video folder copy; with this type a double-click on it plays the disc. -->
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-dvd-video-ifo">
+    <comment>DVD-Video start file</comment>
+    <sub-class-of type="application/octet-stream"/>
+    <glob pattern="video_ts.ifo"/>
+  </mime-type>
+</mime-info>

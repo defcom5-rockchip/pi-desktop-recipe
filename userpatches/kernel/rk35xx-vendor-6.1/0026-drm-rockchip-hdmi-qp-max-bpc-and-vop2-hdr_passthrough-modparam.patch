@@ -1,0 +1,148 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Plaid Pi <286489597+defcom5-rockchip@users.noreply.github.com>
+Date: Tue, 10 Nov 2026 12:00:00 -0700
+Subject: [PATCH] drm/rockchip: dw_hdmi_qp: honour the standard "max bpc" property for HDR output; vop2: hdr_passthrough module parameter
+
+Two independent hunks, both inert until userspace asks for them:
+
+- dw_hdmi_qp-rockchip.c: the vendor "color_depth" property keeps ruling. In addition an HDR
+  signal (EOTF other than SDR) goes out at 10 bpc when the connector's standard "max bpc"
+  property is 10 or more. Generic compositors (KWin, mutter) set that property and never the
+  vendor one, and ST 2084 / HLG at 8 bpc is visibly banded. SDR output is unchanged. The
+  property is created and attached by hand (range 8..10) because
+  drm_connector_attach_max_bpc_property() also writes connector->state, which
+  rockchip_drm_bind() allocates later; after the reset the requested value is 0, i.e. 8 bpc
+  as before, until userspace sets it.
+- rockchip_drm_vop2.c: module parameter rockchipdrm.hdr_passthrough (default off) keeps the
+  VOP2 HDR10 (hdr2sdr) and SDR2HDR engines in bypass, for colour-managed compositors that
+  render every plane in the connector's EOTF themselves and do not know the vendor per-plane
+  "EOTF" property. The image does not set it; it exists for the KWin HDR experiments.
+
+Status: part of the Plaid Pi 6.5 kernel (Armbian rk35xx-vendor 6.1 on stable 6.1.191). Boots
+and drives 4K@120 on the maintainer's Orange Pi 5B (KDE, since 2026-11-10) and Orange Pi 5 Plus
+with both features at their defaults; the HDR output paths themselves are experimental and
+not part of what the image claims.
+
+v2 (2026-11-10): v1 called drm_connector_attach_max_bpc_property() from the
+connector property-attach path, which runs before drm_mode_config_reset()
+allocates connector->state; the helper writes connector->state->max_bpc and
+the board panicked at boot (no display, no network). v2 open-codes the
+property creation and attach and leaves the state alone.
+
+Assisted-by: LLM
+
+diff --git a/drivers/gpu/drm/rockchip/dw_hdmi_qp-rockchip.c b/drivers/gpu/drm/rockchip/dw_hdmi_qp-rockchip.c
+index 12864870d2a54..e0c5d19286ce8 100644
+--- a/drivers/gpu/drm/rockchip/dw_hdmi_qp-rockchip.c
++++ b/drivers/gpu/drm/rockchip/dw_hdmi_qp-rockchip.c
+@@ -2363,11 +2363,6 @@ dw_hdmi_rockchip_select_output(struct drm_connector_state *conn_state,
+ 	    info->hdmi.y420_dc_modes & DRM_EDID_YCBCR420_DC_30)
+ 		support_dc = true;
+ 
+-	if (hdmi->colordepth > 8 && support_dc)
+-		color_depth = 10;
+-	else
+-		color_depth = 8;
+-
+ 	*eotf = HDMI_EOTF_TRADITIONAL_GAMMA_SDR;
+ 	if (conn_state->hdr_output_metadata) {
+ 		hdr_metadata = (struct hdr_output_metadata *)conn_state->hdr_output_metadata->data;
+@@ -2377,6 +2372,20 @@ dw_hdmi_rockchip_select_output(struct drm_connector_state *conn_state,
+ 			*eotf = output_eotf;
+ 	}
+ 
++	/*
++	 * Deep colour: the vendor "color_depth" property (or the depth u-boot
++	 * left behind) keeps ruling. In addition honour the standard "max bpc"
++	 * property for HDR output: a generic compositor (KWin, mutter, ...)
++	 * never sets the vendor property, and an ST 2084 / HLG signal at 8 bpc
++	 * is visibly banded. SDR output is unchanged by this.
++	 */
++	if (support_dc && (hdmi->colordepth > 8 ||
++			   (*eotf > HDMI_EOTF_TRADITIONAL_GAMMA_SDR &&
++			    conn_state->max_requested_bpc >= 10)))
++		color_depth = 10;
++	else
++		color_depth = 8;
++
+ 	*enc_out_encoding = conn_state->colorspace;
+ 
+ 	hdmi->colorimetry =
+@@ -3808,6 +3817,25 @@ static void dw_hdmi_rockchip_attach_properties(struct drm_connector *connector,
+ 	prop = connector->dev->mode_config.hdr_output_metadata_property;
+ 	drm_object_attach_property(&connector->base, prop, 0);
+ 
++	/*
++	 * Standard "max bpc" (8..10 on this IP): generic compositors use it
++	 * to ask for deep colour; see dw_hdmi_rockchip_select_output().
++	 */
++	/*
++	 * Open-coded drm_connector_attach_max_bpc_property(): that helper also
++	 * writes connector->state, which does not exist yet at this point (the
++	 * connector state is allocated later by drm_mode_config_reset() in
++	 * rockchip_drm_bind()); calling it here is a NULL dereference at boot.
++	 * After the reset max_requested_bpc is 0, i.e. 8 bpc as before, until
++	 * userspace sets the property.
++	 */
++	if (!connector->max_bpc_property)
++		connector->max_bpc_property =
++			drm_property_create_range(connector->dev, 0, "max bpc", 8, 10);
++	if (connector->max_bpc_property)
++		drm_object_attach_property(&connector->base,
++					   connector->max_bpc_property, 10);
++
+ 	if (!drm_mode_create_hdmi_colorspace_property(connector))
+ 		drm_object_attach_property(&connector->base, connector->colorspace_property, 0);
+ 	drm_object_attach_property(&connector->base, private->connector_id_prop, hdmi->id);
+diff --git a/drivers/gpu/drm/rockchip/rockchip_drm_vop2.c b/drivers/gpu/drm/rockchip/rockchip_drm_vop2.c
+index c8017fcfb9f64..a05526161c38e 100644
+--- a/drivers/gpu/drm/rockchip/rockchip_drm_vop2.c
++++ b/drivers/gpu/drm/rockchip/rockchip_drm_vop2.c
+@@ -5810,6 +5810,17 @@ static void __maybe_unused vop2_enable_dovi_sys_irqs(struct drm_crtc *crtc)
+ 	}
+ }
+ 
++/*
++ * hdr_passthrough=1: never run the VOP2 HDR10 (hdr2sdr) / SDR2HDR engines.
++ * Meant for colour-managed compositors (KWin, mutter) that render every plane
++ * in the connector's EOTF themselves and do not know the vendor per-plane
++ * "EOTF" property; without this the vendor default (plane EOTF = 0 = SDR)
++ * pushes an already-PQ frame through sdr2hdr once HDR_OUTPUT_METADATA says PQ.
++ */
++static bool hdr_passthrough;
++module_param(hdr_passthrough, bool, 0644);
++MODULE_PARM_DESC(hdr_passthrough, "bypass VOP2 hdr2sdr/sdr2hdr engines, planes are already in the output EOTF (default: false)");
++
+ static int vop2_hdr_get_eotf_by_output_mode(int output_mode)
+ {
+ 	switch (output_mode) {
+@@ -13497,6 +13508,29 @@ static void vop2_setup_hdr10(struct vop2_video_port *vp, uint8_t win_phys_id)
+ 
+ 	vpstate = to_vop2_plane_state(pstate);
+ 
++	if (hdr_passthrough) {
++		/*
++		 * Userspace delivers every plane already in the connector's EOTF:
++		 * keep both engines in bypass, exactly as for an all-SDR frame on
++		 * an SDR output (the state the desktop runs in today).
++		 */
++		vp->hdr_en = false;
++		vp->hdr_in = false;
++		vp->hdr_out = (vcstate->eotf == HDMI_EOTF_SMPTE_ST2084);
++		vp->sdr2hdr_en = false;
++		vpstate->hdr_in = false;
++		vpstate->hdr2sdr_en = false;
++		VOP_MODULE_SET(vop2, vp, hdr10_en, 0);
++		VOP_MODULE_SET(vop2, vp, hdr2sdr_en, 0);
++		VOP_MODULE_SET(vop2, vp, hdr2sdr_bypass_en, 1);
++		VOP_MODULE_SET(vop2, vp, sdr2hdr_path_en, 0);
++		VOP_MODULE_SET(vop2, vp, sdr2hdr_oetf_en, 0);
++		VOP_MODULE_SET(vop2, vp, sdr2hdr_eotf_en, 0);
++		VOP_MODULE_SET(vop2, vp, sdr2hdr_r2r_en, 0);
++		VOP_MODULE_SET(vop2, vp, sdr2hdr_bypass_en, 1);
++		return;
++	}
++
+ 	/*
+ 	 * HDR video plane input
+ 	 */

@@ -3,9 +3,9 @@
 loadTemplate("org.kde.plasma.desktop.defaultPanel")
 
 var launchers = ["org.kde.dolphin.desktop", "google-chrome.desktop", "chromium.desktop", "firefox.desktop",
-                 "mpv.desktop", "org.kde.konsole.desktop", "systemsettings.desktop", "libreoffice-startcenter.desktop",
-                 "org.gnome.Rhythmbox3.desktop", "codium.desktop", "thunderbird.desktop", "pro-updates.desktop",
-                 "audacity.desktop"].map(function (d) { return "applications:" + d; });
+                 "mpv.desktop", "cinemosk.desktop", "org.kde.konsole.desktop", "systemsettings.desktop", "libreoffice-startcenter.desktop",
+                 "org.gnome.Rhythmbox3.desktop", "com.visualstudio.CodeOSS.desktop", "thunderbird.desktop", "pro-updates.desktop",
+                 "org.audacityteam.Audacity.desktop"].map(function (d) { return "applications:" + d; });
 panels().forEach(function (p) {
     p.widgets("org.kde.plasma.icontasks").forEach(function (w) {
         w.currentConfigGroup = ["General"];

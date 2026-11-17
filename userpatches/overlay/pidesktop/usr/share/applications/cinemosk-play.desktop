@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Cinemosk disc player
+Comment=Play a DVD or Blu-ray folder copy full screen
+Icon=cinemosk
+Exec=/usr/local/bin/cinemosk-play %F
+MimeType=application/x-dvd-video-ifo;
+NoDisplay=true
+Terminal=false
+Categories=AudioVideo;Video;Player;

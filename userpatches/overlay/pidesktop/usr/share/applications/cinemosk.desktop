@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Cinemosk
+GenericName=Picture settings for films
+Comment=Choose how films and TV are scaled to your screen, with the measured cost of each choice
+Exec=cinemosk
+Icon=cinemosk
+Terminal=false
+Categories=AudioVideo;Video;
+Keywords=cinema;film;video;mpv;scaling;upscale;downscale;4K;
+StartupNotify=true

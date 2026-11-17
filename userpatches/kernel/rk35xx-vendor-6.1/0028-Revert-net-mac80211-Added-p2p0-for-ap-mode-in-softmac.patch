@@ -1,0 +1,55 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Plaid Pi <286489597+defcom5-rockchip@users.noreply.github.com>
+Date: Sun, 15 Nov 2026 20:30:00 -0700
+Subject: [PATCH] Revert "net: mac80211: Added p2p0 for ap mode in softmac"
+
+This reverts Rockchip BSP commit 30e769eb272d3 (2025-06-23).
+
+That commit makes ieee80211_register_hw() add a second station netdev, "p2p%d", next to
+the default "wlan%d" on every mac80211 device that supports P2P client or GO mode.
+Mainline creates only "wlan%d".
+
+On an Orange Pi 5 Plus with an Intel AX210 (iwlwifi) in the M.2 slot both netdevs belong
+to the same PCI function, so systemd-udevd computes the same predictable name for both
+(wlP2p33s0). One rename succeeds; the other fails and keeps its kernel name:
+
+    iwlwifi 0002:21:00.0 wlP2p33s0: renamed from p2p0
+    wlan0: Failed to rename network interface 4 from 'wlan0' to 'wlP2p33s0': File exists
+
+wlan0 got the predictable name in two of three boots (2026-11-15), p2p0 in the third.
+iwlmvm allows one managed interface, so only one of the two can be up at a time
+(wpa_supplicant: "Could not set interface wlan0 flags (UP): Device or resource busy")
+and NetworkManager lists two Wi-Fi devices, one of them unavailable. A network joined
+from KDE System Settings on the first boot was saved bound to the interface name "p2p0",
+which NetworkManager uses only on an interface of that name.
+
+wpa_supplicant creates the P2P device it needs itself where the driver supports one
+(p2p-dev-<ifname>), as on mainline.
+
+Assisted-by: LLM
+---
+ net/mac80211/main.c | 12 ------------
+ 1 file changed, 12 deletions(-)
+
+diff --git a/net/mac80211/main.c b/net/mac80211/main.c
+--- a/net/mac80211/main.c
++++ b/net/mac80211/main.c
+@@ -1415,18 +1415,6 @@
+ 				   "Failed to add default virtual iface\n");
+ 	}
+ 
+-	/* add one default AP interface if supported */
+-	if (local->hw.wiphy->interface_modes & (BIT(NL80211_IFTYPE_P2P_GO) |
+-	    BIT(NL80211_IFTYPE_P2P_CLIENT)) && !ieee80211_hw_check(hw, NO_AUTO_VIF)) {
+-		struct vif_params params = {0};
+-
+-		result = ieee80211_if_add(local, "p2p%d", NET_NAME_ENUM, NULL,
+-					  NL80211_IFTYPE_STATION, &params);
+-		if (result)
+-			wiphy_warn(local->hw.wiphy,
+-				   "Failed to add p2p virtual iface\n");
+-	}
+-
+ 	wiphy_unlock(hw->wiphy);
+ 	rtnl_unlock();
+ 

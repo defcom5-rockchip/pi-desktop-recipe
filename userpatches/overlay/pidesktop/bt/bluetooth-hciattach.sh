@@ -37,7 +37,8 @@ for i in $(seq 1 10); do module_present && break; sleep 1; done
 stand_down(){ echo "$1 — Bluetooth helpers standing down" > "$ABSENT"; log "$(cat "$ABSENT")"; systemctl stop --no-block bt-sentinel.service 2>/dev/null || true; exit 0; }
 if ! module_present; then
 	if is_5plus; then
-		stand_down "no Broadcom PCIe Wi-Fi/Bluetooth module: an Orange Pi 5 Plus without the optional M.2 Wi-Fi/Bluetooth module"
+		# the 5 Plus M.2 slot takes any card; Intel (and other) Bluetooth arrives over USB and needs none of these helpers
+		stand_down "no Broadcom (AP6275P) Wi-Fi/Bluetooth module in the M.2 slot of this Orange Pi 5 Plus: these helpers are for that module only"
 	elif emmc_present; then
 		log "Broadcom PCIe Wi-Fi/Bluetooth module not found but eMMC present: an Orange Pi 5B whose module did not enumerate — attempting Bluetooth anyway"
 	else

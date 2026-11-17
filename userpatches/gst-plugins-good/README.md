@@ -1,5 +1,11 @@
 # gst-plugins-good for Pi-Desktop
 
+**Superseded in Plaid Pi 6.5:** the image ships GStreamer `1.28.9-0ubuntu0~pd1` (core, base, good, bad, ugly, libav; 27
+runtime packages under `overlay/pidesktop/debs/gstreamer/`), built by `userpatches/backports-2026-11/run-backports.sh`.
+The flacparse fix below is upstream since 1.28.8, so the `+pd1` rebuild is no longer needed; this folder stays as the
+4.5–6.0 record. 1.28.9 leaves the opencore AMR plugins out, as Ubuntu's packaging does (`universe`); AMR still decodes
+through gst-libav.
+
 Pi-Desktop 4.5 ships Ubuntu 26.04's `gst-plugins-good1.0` source package `1.28.2-2ubuntu0.4` rebuilt with one upstream
 patch as `1.28.2-2ubuntu0.4+pd1` (binary packages gstreamer1.0-plugins-good, gstreamer1.0-gtk3, gstreamer1.0-pulseaudio).
 

@@ -7,6 +7,10 @@
 # installers key on them. The product fields are ours (Canonical IP policy: a modified image must not carry the
 # Ubuntu mark as its name). "Built from Ubuntu 26.04 packages" is said in the docs, not in NAME.
 R=/etc/pi-desktop-release
+PN=$(sed -n '1{s/[[:space:]]*$//;p}' /etc/pi-desktop-name 2>/dev/null)   # "Plaid Pi Plus" on the Orange Pi 5 Plus edition (6.5)
+case $PN in ''|*[!A-Za-z0-9\ ._+-]*)   # missing, empty or not a plain name: fall back by board
+	PN="Plaid Pi"; grep -qx 'BOARD=orangepi5-plus' /etc/armbian-release 2>/dev/null && PN="Plaid Pi Plus" ;;
+esac
 [ -r "$R" ] || exit 0
 VER=$(cat "$R")
 set_kv() {   # file key value — replace the line or append it
@@ -19,14 +23,14 @@ set_kv() {   # file key value — replace the line or append it
 for f in /etc/os-release /usr/lib/os-release; do
 	[ -f "$f" ] && [ ! -L "$f" ] || continue
 	set_kv "$f" NAME "Plaid Pi"
-	set_kv "$f" PRETTY_NAME "Plaid Pi $VER"
+	set_kv "$f" PRETTY_NAME "$PN $VER"
 	set_kv "$f" LOGO "pi-desktop"
 	set_kv "$f" HOME_URL "https://defcom5-rockchip.github.io/pi-desktop/"
 	set_kv "$f" DOCUMENTATION_URL "https://github.com/defcom5-rockchip/pi-desktop"
 	set_kv "$f" SUPPORT_URL "https://github.com/defcom5-rockchip/pi-desktop/issues"
 	set_kv "$f" BUG_REPORT_URL "https://github.com/defcom5-rockchip/pi-desktop/issues"
 	set_kv "$f" PRIVACY_POLICY_URL "https://defcom5-rockchip.github.io/pi-desktop/privacy.html"
-	if grep -q "^ARMBIAN_PRETTY_NAME=" "$f"; then set_kv "$f" ARMBIAN_PRETTY_NAME "Plaid Pi $VER"; fi
+	if grep -q "^ARMBIAN_PRETTY_NAME=" "$f"; then set_kv "$f" ARMBIAN_PRETTY_NAME "$PN $VER"; fi
 done
 # Armbian's board package writes the build's VENDOR into /etc/armbian-release; its first-login wizard greets with it
 # ("Welcome to ...") and its cached copy kept an old URL. Same for /etc/issue.net (shown before an ssh login).
@@ -34,5 +38,7 @@ A=/etc/armbian-release
 if [ -f "$A" ]; then
 	sed -i -e 's|^VENDOR=.*|VENDOR="Plaid Pi"|' -e 's|^VENDORURL=.*|VENDORURL="https://defcom5-rockchip.github.io/pi-desktop/"|' "$A"
 fi
-printf 'Plaid Pi %s\n' "$VER" > /etc/issue.net
+printf '%s %s\n' "$PN" "$VER" > /etc/issue.net
+# /etc/issue too: Armbian's base-files rewrites it on every upgrade (it is not a conffile there)
+printf '%s %s (Linux \\r) — \\l\n\n' "$PN" "$VER" > /etc/issue
 exit 0

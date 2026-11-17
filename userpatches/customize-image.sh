@@ -1,11 +1,14 @@
 #!/bin/bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 defcom5-rockchip (Pi-Desktop). See LICENSE in the recipe repository.
-# Plaid Pi 6.0 layer — runs as root inside the arm64 rootfs chroot at the end of Armbian's customize step.
+# Plaid Pi 6.5 layer — runs as root inside the arm64 rootfs chroot at the end of Armbian's customize step.
 # Args: RELEASE LINUXFAMILY BOARD BUILD_DESKTOP. Overlay (userpatches/overlay) is bind-mounted read-only at /tmp/overlay.
 RELEASE=$1; LINUXFAMILY=$2; BOARD=$3; BUILD_DESKTOP=$4
 OV=/tmp/overlay/pidesktop
-PDV="${PIDESKTOP_VERSION:-$(cat /etc/pi-desktop-release 2>/dev/null)}"; PDV="${PDV:-6.0}"   # set by the config hook pre_customize_image__pidesktop_version
+PDV="${PIDESKTOP_VERSION:-$(cat /etc/pi-desktop-release 2>/dev/null)}"; PDV="${PDV:-6.5}"   # set by the config hook pre_customize_image__pidesktop_version
+# The product name the image shows: "Plaid Pi" and, for the Orange Pi 5 Plus edition, "Plaid Pi Plus" (6.5). /etc/pi-desktop-name
+# carries it for the os-release keeper, which re-applies the name after every package run.
+PDNAME="Plaid Pi"; [[ ${BOARD:-} == orangepi5-plus ]] && PDNAME="Plaid Pi Plus"
 PDDE=$(cat /etc/pi-desktop-desktop 2>/dev/null); PDDE=${PDDE:-gnome}   # gnome or kde, written by the same hook (PIDESKTOP_DESKTOP)
 GPU=$(cat /etc/pi-desktop-gpu 2>/dev/null); GPU=${GPU:-${PIDESKTOP_GPU_STACK:-mali}}   # mali | panthor | mesa, written by the same hook (PIDESKTOP_GPU_STACK)
 export DEBIAN_FRONTEND=noninteractive APT_LISTCHANGES_FRONTEND=none
@@ -143,23 +146,27 @@ if ls "$OV"/debs/pipewire/*.deb >/dev/null 2>&1; then
 else
 	log "no overlay pipewire debs — stock $(dpkg-query -W -f='${Version}' pipewire 2>/dev/null)"
 fi
-# gst-plugins-good 1.28.2-2ubuntu0.4+pd1: Ubuntu's package + upstream ef0f9938 ("flacparse: Fix resyncing after a seek",
-# GStreamer 1.28.8). Stock 1.28.2 could stop Rhythmbox playback ("Internal data stream error") when seeking in FLAC files
-# without a SEEKTABLE — 36 % of the maintainer's library. Built and tested on the development board 2026-10-08 (suite 116/0,
-# before/after seek matrix, Rhythmbox by ear). Only replaces packages already installed. NOT held on purpose: this package
-# gets frequent Ubuntu security updates (0.4 carries 19 CVE patches); a newer Ubuntu version wins, and +pd1 then has
-# to be rebuilt on top (userpatches/gst-plugins-good). The first-boot check reports which one is installed.
-if ls "$OV"/debs/gst-plugins-good/*.deb >/dev/null 2>&1; then
+# GStreamer 1.28.9 (6.5; was 1.28.2 with our +pd1 FLAC fix): upstream's latest stable on Ubuntu 26.04's 1.28.2 packaging,
+# rebuilt as 1.28.9-0ubuntu0~pd1 (core, base, good, bad, ugly, libav). Carries the FLAC seek fix (ef0f9938, 1.28.8) that
+# +pd1 backported, the decodebin3 crash fix and two security advisories (SA-2026-0049/0074). Tested on both boards
+# (the 5B test board 2026-11-08: 273 plugins, FLAC seek 2/2; the 5 Plus 2026-11-13: 273 plugins). Only packages already installed are
+# replaced, all in one transaction so versions never mix. NOT held: ~pd1 sorts below a future Ubuntu 1.28.9 SRU.
+# A function, run here and again after the last package install (Rhythmbox pulls gstreamer1.0-libav, Brasero and others
+# can pull more GStreamer packages from Ubuntu at 1.28.2): the second pass lifts anything added in between.
+install_gst_overlay() {
+if ls "$OV"/debs/gstreamer/*.deb >/dev/null 2>&1; then
 	gstdebs=()
-	for d in "$OV"/debs/gst-plugins-good/*.deb; do
+	for d in "$OV"/debs/gstreamer/*.deb; do
 		dpkg -s "$(dpkg-deb -f "$d" Package)" >/dev/null 2>&1 && gstdebs+=("$d")
 	done
 	if [[ ${#gstdebs[@]} -gt 0 ]]; then
-		apt-get install -y -qq "${gstdebs[@]}" >/dev/null \
-			&& log "gst-plugins-good from overlay: $(dpkg-query -W -f='${Version}' gstreamer1.0-plugins-good) (${#gstdebs[@]} packages, flacparse seek fix)" \
-			|| warn "overlay gst-plugins-good debs failed to install — stock $(dpkg-query -W -f='${Version}' gstreamer1.0-plugins-good)"
+		apt-get install -y -qq --no-install-recommends "${gstdebs[@]}" </dev/null >/dev/null \
+			&& log "GStreamer from overlay: $(dpkg-query -W -f='${Version}' libgstreamer1.0-0) (${#gstdebs[@]} packages)" \
+			|| warn "overlay GStreamer 1.28.9 debs failed to install — stock $(dpkg-query -W -f='${Version}' libgstreamer1.0-0)"
 	fi
 fi
+}
+install_gst_overlay
 install -d /etc/pipewire/pipewire.conf.d /etc/wireplumber/wireplumber.conf.d
 # install -o root, never cp -a: the overlay is owned by the build user (uid 1000), which is the desktop user on the
 # image — cp -a left six /etc files user-writable on test3 (incl. modprobe.d = root code exec on module load).
@@ -264,23 +271,29 @@ apt-get install -y -qq --no-install-recommends libva2 libva-drm2 libva-wayland2 
 if ls "$OV"/debs/media/*.deb >/dev/null 2>&1; then
 	# The decode stack (MPP, librga, rockchip-vaapi) in one transaction; Pi-Desktop's mpv in its own, so a problem with
 	# it can never take the driver down with it.
-	media_debs=$(ls "$OV"/debs/media/*.deb | grep -v '/mpv_'); mpv_deb=$(ls "$OV"/debs/media/mpv_*.deb 2>/dev/null | sort -V | tail -1)
+	# mpv 0.42 (6.5): mpv, libmpv2 and its two new libraries (libplacebo387, libdvdread 7.1.1 for DVD-Audio) go in together,
+	# after the decode stack: libmpv2 alone would make apt remove Ubuntu's mpv 0.41 in between.
+	media_debs=$(ls "$OV"/debs/media/*.deb | grep -v -E '/(mpv|libmpv2|libplacebo[0-9]*|libdvdread[0-9a-z]*)_')
+	mpv_deb=$(ls "$OV"/debs/media/mpv_*.deb 2>/dev/null | sort -V | tail -1)
+	mpv_libs=$(ls "$OV"/debs/media/libmpv2_*.deb "$OV"/debs/media/libplacebo[0-9]*_*.deb "$OV"/debs/media/libdvdread[0-9a-z]*_*.deb 2>/dev/null)
 	# One file per package, or the bake stops: with two versions side by side (an rc next to its final) `ls` order
 	# decided which one apt installed, and the rc won (review 2026-10-19). Retire old debs to debs/superseded/.
-	_dups=$(for f in $media_debs; do dpkg-deb -f "$f" Package; done | sort | uniq -d)
+	_dups=$(for f in $media_debs $mpv_libs; do dpkg-deb -f "$f" Package; done | sort | uniq -d)
 	[[ -z $_dups ]] || { echo "E: [pi-desktop] two debs for the same package in overlay/debs/media: $_dups — move the old one to debs/superseded/" >&2; exit 1; }
 	apt-get install -y -qq --allow-downgrades $media_debs >/dev/null && log "media debs: $(echo "$media_debs" | xargs -n1 basename | sed 's/_arm64.deb//' | tr '\n' ' ')" || warn "media overlay debs failed"
 	if [[ -n "$mpv_deb" ]]; then
 		# Ubuntu's mpv (installed above) has its pristine conffile at this point, so dpkg replaces it without a prompt;
 		# the overlay copy is installed afterwards, so dpkg's conffile choice here does not matter.
-		apt-get install -y -qq --allow-downgrades -o Dpkg::Options::=--force-confnew "$mpv_deb" >/dev/null && log "mpv: $(basename "$mpv_deb" _arm64.deb)" || warn "Pi-Desktop mpv deb failed; Ubuntu's mpv stays (copy-back)"
+		apt-get install -y -qq --allow-downgrades -o Dpkg::Options::=--force-confnew "$mpv_deb" $mpv_libs >/dev/null \
+			&& log "mpv: $(basename "$mpv_deb" _arm64.deb) with $(echo "$mpv_libs" | xargs -rn1 basename | sed 's/_arm64.deb//' | tr '\n' ' ')" \
+			|| warn "Pi-Desktop mpv debs failed; Ubuntu's mpv stays (copy-back)"
 	fi
 	for p in librockchip-mpp1 librockchip-mpp-dev librockchip-vpu1 rockchip-vaapi rockchip-vaapi-driver librga2 libv4l-rkmpp; do dpkg -s "$p" >/dev/null 2>&1 && apt-mark hold "$p" >/dev/null; done
-	# Hold mpv only when it is Pi-Desktop's build (Ubuntu's 0.41.0-2ubuntu4 + two patches, version +pdN): any Ubuntu
-	# update of mpv (0.41.0-2ubuntu4.x sorts above +pd1) would replace it, and with zero-copy on and the 10-bit profile
-	# removed (below), Ubuntu's mpv draws 10-bit near-black (KNOWN-ISSUES VID-7). The price: Ubuntu's mpv fixes arrive
-	# only with a Pi-Desktop rebuild. Never hold Ubuntu's own mpv (that would freeze it off security updates).
-	grep -qa 'driver imports it as an integer texture' /usr/bin/mpv 2>/dev/null && apt-mark hold mpv >/dev/null
+	# Hold mpv (and libmpv2) only when it is Pi-Desktop's build (0.42.0 on Ubuntu's packaging + two patches, ~pdN): with
+	# zero-copy on and the 10-bit profile removed (below), Ubuntu's mpv draws 10-bit near-black (KNOWN-ISSUES VID-7). Ubuntu
+	# updates of 0.41 sort below 0.42, so the hold is a guard against a future archive 0.42+. The price: Ubuntu's mpv
+	# fixes arrive only with a Pi-Desktop rebuild. Never hold Ubuntu's own mpv (that would freeze it off security updates).
+	grep -qa 'driver imports it as an integer texture' /usr/bin/mpv 2>/dev/null && apt-mark hold mpv libmpv2 >/dev/null
 else
 	warn "no media debs in overlay (patched MPP / rockchip-vaapi not baked) — decode tests will be stock-only"
 fi
@@ -300,6 +313,30 @@ fi
 install -Dm0644 -o root -g root "$OV"/etc/mpv/scripts/pidesktop-netpath.lua /etc/mpv/scripts/pidesktop-netpath.lua
 install -Dm0755 -o root -g root "$OV"/usr/local/bin/pidesktop-local-path /usr/local/bin/pidesktop-local-path
 [[ -f /etc/mpv/scripts/pidesktop-netpath.lua && -x /usr/local/bin/pidesktop-local-path ]] && log "mpv: network-drop script + path helper installed" || warn "mpv: network-drop script/helper missing"
+# Cinemosk (2026-11-13): the app (Python + GTK4/libadwaita) lets the viewer choose how mpv scales films that don't match the
+# screen (4K on a 1080p screen, 720p on a 4K screen) with the measured dropped frames and GPU use beside each choice, and
+# writes ~/.config/mpv/script-opts/cinemosk.conf; the mpv script applies it per film (Alt+c per-folder override, Alt+m meter).
+# cinemosk-play (2026-11-13) plays a DVD or Blu-ray folder copy full screen; mpv starts the longest title. KDE: right-click a
+# folder > "Play DVD or Blu-ray" (the film folder at any level, FullDisc/<TITLE> layouts included). Both desktops: double-click
+# VIDEO_TS.IFO (new file type application/x-dvd-video-ifo, handled by the hidden cinemosk-play.desktop).
+apt-get install -y -qq --no-install-recommends python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 >/dev/null || warn "Cinemosk: GTK4/libadwaita Python bindings failed to install"
+install -Dm0644 -o root -g root "$OV"/etc/mpv/scripts/pidesktop-cinema.lua /etc/mpv/scripts/pidesktop-cinema.lua
+install -Dm0755 -o root -g root "$OV"/usr/local/bin/cinemosk /usr/local/bin/cinemosk
+install -Dm0644 -o root -g root "$OV"/usr/share/applications/cinemosk.desktop /usr/share/applications/cinemosk.desktop
+install -Dm0644 -o root -g root "$OV"/usr/share/icons/hicolor/scalable/apps/cinemosk.svg /usr/share/icons/hicolor/scalable/apps/cinemosk.svg
+install -Dm0755 -o root -g root "$OV"/usr/local/bin/cinemosk-play /usr/local/bin/cinemosk-play
+install -Dm0644 -o root -g root "$OV"/usr/share/applications/cinemosk-play.desktop /usr/share/applications/cinemosk-play.desktop
+install -Dm0644 -o root -g root "$OV"/usr/share/mime/packages/cinemosk-disc.xml /usr/share/mime/packages/cinemosk-disc.xml
+[[ $PDDE == kde ]] && install -Dm0644 -o root -g root "$OV"/usr/share/kio/servicemenus/cinemosk-play-disc.desktop /usr/share/kio/servicemenus/cinemosk-play-disc.desktop
+update-mime-database /usr/share/mime 2>/dev/null || warn "Cinemosk: update-mime-database failed (VIDEO_TS.IFO double-click)"
+update-desktop-database -q /usr/share/applications 2>/dev/null || true
+gtk-update-icon-cache -q -f /usr/share/icons/hicolor 2>/dev/null || true
+[[ -f /etc/mpv/scripts/pidesktop-cinema.lua && -x /usr/local/bin/cinemosk && -f /usr/share/applications/cinemosk.desktop && -x /usr/local/bin/cinemosk-play \
+	&& -f /usr/share/applications/cinemosk-play.desktop && -f /usr/share/icons/hicolor/scalable/apps/cinemosk.svg ]] \
+	&& { [[ $PDDE != kde ]] || [[ -f /usr/share/kio/servicemenus/cinemosk-play-disc.desktop ]]; } \
+	&& grep -q 'x-dvd-video-ifo' /usr/share/mime/globs2 \
+	&& python3 -c 'import gi; gi.require_version("Gtk", "4.0"); gi.require_version("Adw", "1")' 2>/dev/null \
+	&& log "Cinemosk: app, desktop entry, icon, mpv script and disc launcher installed" || warn "Cinemosk: app, mpv script or disc launcher missing"
 # Zero-copy first only when it pays off. It needs (1) rockchip-vaapi 2.5.0 or later (drain fix: no leak on an abandoned
 # zero-copy attempt; slot and buffer locks) and (2) an mpv that handles the Mali driver's integer-texture and refused planes
 # (Pi-Desktop's mpv build, patch 0001; detected by its log string, not by version). Then 8-bit and 10-bit both draw
@@ -345,7 +382,7 @@ install -Dm0644 -o root -g root "$OV"/usr/share/pi-desktop/apt/00-pidesktop-brow
 install -m0644 -o root -g root /usr/share/pi-desktop/apt/00-pidesktop-browsers /etc/apt/preferences.d/00-pidesktop-browsers
 apt-get update -qq
 if [[ $PDDE == kde ]]; then
-	# KDE edition (G-Man, 2026-10-29: "browsers can be user install launchers"): Chromium installs on first click like
+	# KDE edition (the maintainer, 2026-10-29: "browsers can be user install launchers"): Chromium installs on first click like
 	# Firefox (pidesktop-get chromium: about 130 MB download, 380 MB installed). The KDE desktop list brings Armbian's
 	# copy, so it goes again. The purge also deletes Armbian's neutral master_preferences (written over the package's
 	# conffile by the branding); stage it for the installer, so Chromium starts as on the GNOME image.
@@ -416,7 +453,7 @@ dpkg -s google-chrome-stable >/dev/null 2>&1 && warn "google-chrome-stable is in
 install -Dm0755 -o root -g root "$OV"/usr/local/bin/pidesktop-get /usr/local/bin/pidesktop-get
 install -Dm0755 -o root -g root "$OV"/usr/local/sbin/pidesktop-install-app /usr/local/sbin/pidesktop-install-app
 install -Dm0644 -o root -g root "$OV"/usr/share/polkit-1/actions/org.pidesktop.install-app.policy /usr/share/polkit-1/actions/org.pidesktop.install-app.policy
-for d in libreoffice-startcenter gimp org.inkscape.Inkscape thunderbird codium firefox; do
+for d in libreoffice-startcenter gimp org.inkscape.Inkscape thunderbird com.visualstudio.CodeOSS firefox; do   # same names as the real menu entries (VSCodium 1.143: com.visualstudio.CodeOSS; Audacity 4 is org.audacityteam.Audacity)
 	install -Dm0644 -o root -g root "$OV"/usr/local/share/applications/$d.desktop /usr/local/share/applications/$d.desktop
 done
 # KDE: Chromium's placeholder (same desktop id, so the panel launcher and the default-browser entry keep working after the
@@ -515,6 +552,11 @@ log "session safety: Nautilus in its own user unit (oomd can't hit the session b
 # Quick how-to on every new desktop (user, 2026-09-26): getting Chrome (first-run installer) + display scaling at 4K@120.
 if [[ $PDDE == kde ]]; then HOWTO="$OV/kde/Plaid Pi How-To.txt"; else HOWTO="$OV/etc/skel/Desktop/Plaid Pi How-To.txt"; fi
 install -Dm0644 -o root -g root "$HOWTO" "/etc/skel/Desktop/Plaid Pi How-To.txt" && log "desktop: Plaid Pi How-To.txt ($PDDE) in /etc/skel/Desktop"
+if [[ $PDNAME != "Plaid Pi" ]]; then   # the title names the edition; its underline keeps the title's length
+	_h="/etc/skel/Desktop/Plaid Pi How-To.txt"
+	sed -i "1s/^Plaid Pi /${PDNAME} /" "$_h" && sed -i "2s/.*/$(sed -n '1{s/./=/g;p}' "$_h")/" "$_h"
+	[[ $(sed -n 1p "$_h") == "${PDNAME} ${PDV} - "* ]] && log "How-To title: $(sed -n 1p "$_h")" || warn "How-To title is not '${PDNAME} ${PDV} - …': $(sed -n 1p "$_h")"
+fi
 # suspend: masked + GNOME auto-suspend off (2.0.x hook 60 rule; carry-forward miss found on test2 first boot 2026-09-24).
 # Resume on the vendor kernel is not validated on Plaid (the stmmac fix is in, the sleep DT config is not). Blanking stays.
 for t in sleep suspend hibernate hybrid-sleep; do systemctl mask "$t.target" >/dev/null 2>&1; done
@@ -665,8 +707,11 @@ install -Dm0644 "$OV"/etc/systemd/system.conf.d/60-pidesktop-watchdog.conf /etc/
 # rpcbind (port 111) listened from the first boot, pulled in by Armbian's NFS client packages. Disabled, not masked: an
 # NFSv3 mount still starts it on demand.
 systemctl disable rpcbind.socket rpcbind.service >/dev/null 2>&1 && log "rpcbind: off by default (starts on demand for NFSv3)" || true
+printf '%s\n' "$PDNAME" > /etc/pi-desktop-name
+# KDE's About this System (and kinfo) compose "NAME VERSION_ID" ("Plaid Pi 26.04") unless a distro file names the product
+[[ $PDDE == kde ]] && printf '[General]\nName=%s\nVersion=%s\n' "$PDNAME" "$PDV" > /etc/xdg/kcm-about-distrorc && log "KDE About: $PDNAME $PDV"
 /usr/local/sbin/pidesktop-os-release
-grep -q "Plaid Pi ${PDV}" /etc/os-release && log "os-release: $(grep PRETTY_NAME /etc/os-release)" || warn "PRETTY_NAME not applied to /etc/os-release"
+grep -q "${PDNAME} ${PDV}" /etc/os-release && log "os-release: $(grep PRETTY_NAME /etc/os-release)" || warn "PRETTY_NAME not applied to /etc/os-release"
 echo plaidpi > /etc/hostname; sed -i "s/127.0.1.1.*/127.0.1.1\tplaidpi/" /etc/hosts
 # "pidesktop" is only the pre-setup name: Armbian's first login never asks for a computer name, and two Pi-Desktops on one
 # network would clash (mDNS, Samba). Ask right after the account is created, suggesting <username>-plaidpi (2026-09-26).
@@ -711,7 +756,7 @@ if [[ -f $_fl ]] && grep -q 'cat <<- EOF > /etc/sddm.conf.d/autologin.conf' "$_f
 elif [[ $PDDE == kde ]]; then
 	warn "first login: SDDM autologin line not found in armbian-firstlogin — check how it enables autologin now"
 fi
-printf 'Plaid Pi %s (Linux \\r) — \\l\n\n' "$PDV" > /etc/issue
+printf '%s %s (Linux \\r) — \\l\n\n' "$PDNAME" "$PDV" > /etc/issue
 apt-get purge -y -qq armbian-zsh armbian-config armbian-plymouth-theme 2>/dev/null || true   # keep armbian-bsp-cli-* (boot scripts, firstlogin) + armbian-firmware
 for f in /etc/update-motd.d/*armbian*; do [[ -f $f ]] && chmod -x "$f"; done
 # Privacy audit before the 4.0 release (2026-10-03): nothing in the image may phone home on its own.
@@ -759,7 +804,7 @@ if [[ $PDDE == kde ]]; then   # same decision for KDE's store: Discover (and its
 	log "KDE: Discover removed [${_dp:-not installed}]"
 	# snapd came in with Discover's snap backend (Recommends) and is enabled; the GNOME image has none (PRIVACY.md).
 	safe_purge snapd || warn "snapd purge refused"
-	# Apps the KDE desktop list brings that duplicate a KDE app or that the GNOME edition never ships (G-Man,
+	# Apps the KDE desktop list brings that duplicate a KDE app or that the GNOME edition never ships (the maintainer,
 	# 2026-10-29: "apps we don't need?"): Terminator (Konsole), KWrite (Kate), GNOME Help + its documents (KDE Help
 	# Center), Transmission, Qrca (a barcode scanner without a camera), Software Sources / Additional Drivers (Qt).
 	# One safe_purge per app: each refuses on its own if anything else would leave with it.
@@ -801,6 +846,13 @@ fi
 # armbian-bsp-cli points those at Armbian's wordmark. Point them at ours (tartan pi + "Plaid Pi", made by
 # branding/make-wordmark.py; -dark = cream text for the dark greeter). ubuntu-logo.svg follows to the square logo.
 if [[ -f $BR/plaid-pi-logo-text-dark.png && -f $BR/plaid-pi-logo-text.png ]]; then
+	# base-files (Armbian's build of it, from apt.armbian.com) OWNS these five links and re-creates them on every upgrade:
+	# on 2026-11-15 a Pro Updates run (base-files 26.11.0-trunk -> 26.11.1) put Armbian's wordmark back on the login
+	# screen of a test image. Divert them first, so an upgrade writes the package's link next to ours and ours stays.
+	for f in /usr/share/pixmaps/ubuntu-logo-text.png /usr/share/pixmaps/ubuntu-logo-text.svg \
+	         /usr/share/pixmaps/ubuntu-logo-text-dark.png /usr/share/pixmaps/ubuntu-logo-text-dark.svg /usr/share/pixmaps/ubuntu-logo.svg; do
+		dpkg-divert --quiet --add --rename --divert "$f.armbian" "$f" || warn "branding: could not divert $f (an upgrade of base-files may restore Armbian's wordmark)"
+	done
 	for v in "" -dark; do
 		for e in png svg; do
 			install -Dm0644 -o root -g root "$BR/plaid-pi-logo-text$v.$e" "/usr/share/pixmaps/plaid-pi-logo-text$v.$e"
@@ -856,7 +908,7 @@ fi
 if [[ $PDDE == kde ]]; then DEL="KDE Plasma $(dpkg-query -W -f='${Version}' plasma-workspace 2>/dev/null | sed -E 's/^[0-9]+://; s/-.*//')"; else DEL="GNOME 50"; fi
 cat > /etc/update-motd.d/05-pi-desktop <<-M
 	#!/bin/sh
-	printf '\\n  Plaid Pi ${PDV}  ·  built from Ubuntu 26.04 packages  ·  ${DEL}  ·  kernel %s\\n\\n' "\$(uname -r)"
+	printf '\\n  ${PDNAME} ${PDV}  ·  built from Ubuntu 26.04 packages  ·  ${DEL}  ·  kernel %s\\n\\n' "\$(uname -r)"
 M
 chmod +x /etc/update-motd.d/05-pi-desktop
 
@@ -875,15 +927,11 @@ for f in /boot/armbianEnv.txt /usr/share/armbian/armbianEnv.txt; do
 	sed -i 's/cma=256M/cma=512M/' "$f"
 	grep -q '^extraargs=' "$f" || echo 'extraargs=' >> "$f"
 	grep -q 'dw_hdmi_qp.frl_update_poll_ms=' "$f" || sed -i '/^extraargs=/ s/$/ dw_hdmi_qp.frl_update_poll_ms=0/' "$f"
-	# Orange Pi 5 Plus: 4K@120 is not proven there yet (kernel 0020 gives its vp0 the same v0pll dclk the 5B needed, but no
-	# 5 Plus has run the 120 Hz tests), so its image keeps HDMI 2.1 modes hidden; a tester adds the argument by hand.
-	# userpatches/bootenv/rk35xx.txt no longer carries the argument (it went to every RK3588 board); this adds it per board.
-	if [[ "$BOARD" == "orangepi5-plus" ]]; then
-		sed -i -E '/^extraargs=/ s/ rockchipdrm\.allow_frl=[^ ]*//' "$f"
-		log "$f: rockchipdrm.allow_frl NOT set on the 5 Plus (4K@120 untested there)"
-	else
-		grep -q 'rockchipdrm.allow_frl=' "$f" || sed -i '/^extraargs=/ s/$/ rockchipdrm.allow_frl=1/' "$f"
-	fi
+	# Orange Pi 5 Plus too since 6.5: 4K@120 proven on a 5 Plus on 2026-11-12/13 (kernel 0020 gives its vp0 the v0pll dclk;
+	# HDMI0 FRL training succeeded every time, 4K120 playback measured). KWin still starts at the EDID's preferred mode
+	# (60 Hz on our monitors); this only offers 100/120 Hz. userpatches/bootenv/rk35xx.txt no longer carries the argument
+	# (it went to every RK3588 board); this adds it per board image.
+	grep -q 'rockchipdrm.allow_frl=' "$f" || sed -i '/^extraargs=/ s/$/ rockchipdrm.allow_frl=1/' "$f"
 	log "$f: $(grep ^extraargs "$f")"
 done
 
@@ -918,6 +966,21 @@ if [[ -f $NVRAM ]]; then
 	dpkg-divert --quiet --add --rename --divert "$NVRAM.armbian" "$NVRAM" && cp -a "$NVRAM.armbian" "$NVRAM"   # survive armbian-firmware upgrades
 	grep -q '^btc_params8=' "$NVRAM" || printf '%s\n' '#BT Coex timing params (Pi Studio BT-3 mitigation, ubuntu-rockchip#2)' 'btc_params8=0x4e20' 'btc_params1=0x7530' 'btc_params50=0x972c' >> "$NVRAM"
 	log "nvram: $(grep -c '^btc_params' "$NVRAM") btc_params lines in $NVRAM"
+	# The driver asks for the lowercase name. armbian-firmware built 2026-11-14 (SAbf5f) ships it as a 17-byte text FILE holding the
+	# link target ("nvram_AP6275P.txt") instead of the symlink every earlier build had, so bcmdhd would read that text as its nvram.
+	# Divert the packaged file and put the link back (a later armbian-firmware cannot undo it).
+	NVLC=/lib/firmware/ap6275p/nvram_ap6275p.txt
+	if [[ "$(readlink "$NVLC")" != nvram_AP6275P.txt ]]; then
+		nvdiv=0
+		if [[ -e $NVLC || -L $NVLC ]]; then
+			dpkg-divert --quiet --add --rename --divert "$NVLC.armbian" "$NVLC" || { nvdiv=1; warn "nvram: could not divert $NVLC (a later armbian-firmware could put the plain file back)"; }
+		fi
+		if ln -sfn nvram_AP6275P.txt "$NVLC" && [[ $nvdiv == 0 ]]; then
+			log "nvram: $NVLC restored as the link to nvram_AP6275P.txt (armbian-firmware shipped it as a plain file)"
+		else
+			warn "nvram: $NVLC link restored without a diversion, or not restored"
+		fi
+	fi
 else
 	warn "$NVRAM missing — AP6275P firmware layout changed; coex params NOT applied"
 fi
@@ -970,6 +1033,19 @@ for b in managed recommended; do
 done
 _left=$(find /etc/chromium/policies /etc/opt/chrome/policies -type f 2>/dev/null | wc -l)
 [[ $_left -eq 0 ]] && log "browsers: Armbian Chromium/Chrome policies moved to /usr/share/pi-desktop/parked-policies (policy dirs empty)" || warn "browsers: $_left file(s) still in the Chromium/Chrome policy dirs"
+# GStreamer second pass (see install_gst_overlay): every GStreamer package installed since the first pass moves to 1.28.9 too
+install_gst_overlay
+_mixed=$(dpkg-query -W -f='${Package} ${Version}\n' 'gstreamer1.0-*' 'libgst*' 'gir1.2-gst*' 2>/dev/null | awk '$2 ~ /^1\.28\.2/ {print $1}' | tr '\n' ' ')
+[[ -z $_mixed ]] && log "GStreamer: one version throughout ($(dpkg-query -W -f='${Version}' libgstreamer1.0-0))" || warn "GStreamer: still at 1.28.2 next to 1.28.9: $_mixed"
+# Ubuntu's pipewire-libcamera is an empty transitional package (Depends: libspa-0.2-libcamera). Our ~pd55 libspa-0.2-libcamera
+# Provides it and owns the plugin, so the stray only shows up as "1.6.2 beside 1.6.10" in the first-boot check: purge it when
+# it holds no files of its own and nothing else would go with it (checked 2026-11-14 on the 5 Plus: only itself).
+if dpkg -s pipewire-libcamera >/dev/null 2>&1 && ! dpkg -s pipewire-libcamera 2>/dev/null | grep -q "^Version: .*~pd"; then
+	_own=$(dpkg -L pipewire-libcamera 2>/dev/null | grep -v -E '^/\.?$|^/usr$|^/usr/share$|^/usr/share/doc(/|$)' | wc -l)
+	_rm=$(apt-get -s purge pipewire-libcamera 2>/dev/null | grep -c -E '^(Remv|Purg) ')
+	if [[ $_own -eq 0 && $_rm -eq 1 ]]; then apt-get purge -y -qq pipewire-libcamera >/dev/null && log "PipeWire: Ubuntu's empty pipewire-libcamera purged (libspa-0.2-libcamera ~pd55 provides it)"
+	else warn "PipeWire: pipewire-libcamera kept ($_own own files, purge would remove $_rm packages)"; fi
+fi
 # (6) Plaid terminal greeting: fastfetch with the tartan pi logo on interactive shells
 apt-get install -y -qq --no-install-recommends fastfetch >/dev/null 2>&1 || true
 install -Dm0644 "$OV"/fastfetch/plaid.ans /usr/share/pi-desktop/fastfetch/plaid.ans
@@ -978,7 +1054,7 @@ install -Dm0644 "$OV"/fastfetch/config.jsonc /etc/fastfetch/config.jsonc
 # 5 Plus build "ORANGE PI 5 PLUS"
 case "$BOARD" in
 	orangepi5)      sed -i 's#// ORANGE PI 5B - #// ORANGE PI 5 - #' /etc/fastfetch/config.jsonc;;
-	orangepi5-plus) sed -i 's#// ORANGE PI 5B - #// ORANGE PI 5 PLUS - #' /etc/fastfetch/config.jsonc;;
+	orangepi5-plus) sed -i -e 's#// ORANGE PI 5B - #// ORANGE PI 5 PLUS - #' -e "s#// PLAID PI ${PDV} //#// PLAID PI PLUS ${PDV} //#" -e "s#echo 'Plaid Pi ${PDV}'#echo '${PDNAME} ${PDV}'#" /etc/fastfetch/config.jsonc;;
 esac
 grep -q PI_DESKTOP_FETCHED /etc/bash.bashrc || cat "$OV"/fastfetch/bash.bashrc.snippet >> /etc/bash.bashrc
 log "test1 fixes: codec udev, mpris-proxy off, mdns+gvfs-fuse+cifs, root ssh key-only, plaid fastfetch"
@@ -1007,10 +1083,10 @@ log "final guard: core desktop packages present"
 [[ "$GPU" == panthor ]] && sed -i '/Arm Mali user-space driver (libmali)/d' /usr/share/doc/pi-desktop/copyright 2>/dev/null   # no libmali on a Panthor image
 
 {
-	echo "Plaid Pi ${PDV} — built $(date -u +%F' '%T) UTC — BOARD=$BOARD DESKTOP=$PDDE RELEASE=$RELEASE FAMILY=$LINUXFAMILY GPU=$GPU"
+	echo "${PDNAME} ${PDV} — built $(date -u +%F' '%T) UTC — BOARD=$BOARD DESKTOP=$PDDE RELEASE=$RELEASE FAMILY=$LINUXFAMILY GPU=$GPU"
 	echo; echo "## key packages"
 	dpkg-query -W -f='${Package} ${Version}\n' 'linux-image-*' 'linux-dtb-*' 'linux-u-boot-*' gnome-shell mutter gdm3 plasma-workspace kwin-wayland sddm mesa-vulkan-drivers libegl-mesa0 'libmali-*' \
-		pipewire wireplumber librockchip-mpp1 librockchip-mpp-dev librockchip-vpu1 librga2 rockchip-vaapi libva2 mpv ffmpeg chromium firefox linux-firmware bluez alsa-ucm-conf 2>/dev/null | sort
+		pipewire wireplumber librockchip-mpp1 librockchip-mpp-dev librockchip-vpu1 librga2 rockchip-vaapi libva2 mpv libmpv2 libplacebo387 libdvdread8t64 libgstreamer1.0-0 gstreamer1.0-plugins-good pro-updates ffmpeg chromium firefox linux-firmware bluez alsa-ucm-conf 2>/dev/null | sort
 	echo; echo "## held"; apt-mark showhold
 	echo; echo "## pulseaudio present?"; dpkg -l 'pulseaudio*' 2>/dev/null | grep '^ii' || echo none
 } > /etc/pi-desktop-manifest.txt

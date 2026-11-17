@@ -1,4 +1,4 @@
-Plaid Pi 6.0 - Quick How-To
+Plaid Pi 6.5 - Quick How-To
 ===========================
 
 
@@ -86,5 +86,33 @@ WiiM speakers have a receive buffer of their own: in WiiM Home, Browse >
 "Manage" (or "Customize") next to Source Input > the ... on the Bluetooth tile >
 Playback Latency. 300 ms played every test here without a hiccup at the
 highest-quality SBC setting; higher values are not better.
+
+6. Films, DVDs and Blu-ray discs
+--------------------------------
+mpv is the film player. Cinemosk (in the Application Launcher, and the
+film-reel icon in the panel) sets how films smaller than the screen are
+enlarged - Smooth, Balanced or Sharp - and shows what each choice costs,
+measured on this board. It also has the DVD picture switches: banding
+clean-up, filling the screen for letterboxed discs, and even motion for 24 fps
+films on 120 Hz screens. In mpv, Alt+C overrides the choice for the film's
+folder, Alt+M shows the meter and Alt+F toggles the fill.
+
+A disc in a DVD or Blu-ray drive: open Cinemosk and choose "Play the disc in
+the drive". A DVD starts in its own menu: the arrow keys, Enter and the mouse
+work the menu, and Ctrl+M returns to it from the film. Bought DVDs are
+encrypted, and the library that reads them cannot be included in Plaid Pi: the
+first time, you are offered to have it built on this computer (Ubuntu's
+libdvd-pkg downloads the source and compiles it; you are asked for your
+password). "Disc support" at the bottom of Cinemosk shows what is installed,
+and adds Java for Blu-ray menus that are written in Java (Blu-ray discs have
+not been tested yet). Bought Blu-rays are encrypted in a way Plaid Pi cannot
+open. An audio CD or a blank disc is not played this way;
+a data disc with copied films on it opens like any folder (below).
+
+A DVD or Blu-ray copied to a folder (VIDEO_TS or BDMV inside) plays from the
+folder: right-click it in Dolphin > "Play DVD or Blu-ray", or double-click its
+VIDEO_TS.IFO, or use "Play a DVD or Blu-ray folder" in Cinemosk. mpv starts
+the longest title (Ctrl+M shows a DVD's menu) and switches its deinterlacer on
+for discs opened this way. DVD-Audio support is built into this mpv (dvda://).
 
 More help: https://github.com/defcom5-rockchip/pi-desktop

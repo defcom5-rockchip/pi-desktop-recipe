@@ -10,7 +10,7 @@ pixel clock only when that PLL is v0pll; gpll/cpll cannot give
 1082.89 MHz. Assign dclk_vop0_src to v0pll as the RK3588 EVB boards do.
 HDMI1 on vp1 is unchanged.
 
-Compile-tested only: no Orange Pi 5 Plus has run the 4K@120 tests.
+Proven on an Orange Pi 5 Plus 2026-11-12/13: HDMI0 FRL link training and 4K@120 desktop and playback (Plaid Pi 6.5).
 
 Assisted-by: LLM
 ---
